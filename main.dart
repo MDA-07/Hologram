@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 
 void main() => runApp(const HoloApp());
@@ -166,7 +167,12 @@ List<Part> buildBody(bool f) {
     g.tap('skeleton', 'humerus', '${sd}humerus', BC, sh, el, .02, .016);
     g.tap('skeleton', 'forearm', '${sd}radius & ulna', BC, el, wr, .015, .01);
     g.tap('skeleton', 'hand', '${sd}hand', BC, wr, o3(wr, s * .01, -.1, .02), .02, .012);
-    for (var i = 0; i < 5; i++) g.tap('skeleton', 'hand', '${sd}finger', BC, o3(wr, s * .01, -.1, .02), o3(wr, s * (.02 + i * .004), -.19, .03 + i * .012), .005, .003);
+    for (var i = 0; i < 5; i++) {
+      final fingerStart = o3(wr, s * .01, -.1, .012);
+      final fingerEnd = o3(wr, s * (.02 + i * .004), -.174, .018 + i * .006);
+      // Keep phalanges comfortably inside the hand/finger skin envelope.
+      g.tap('skeleton', 'hand', '${sd}finger', BC, fingerStart, fingerEnd, .0032, .0022);
+    }
     g.tap('skeleton', 'femur', '${sd}femur', BC, hp, kn, .028, .022);
     g.tap('skeleton', 'tibia', '${sd}tibia', BC, kn, an, .022, .016);
     g.tap('skeleton', 'tibia', '${sd}fibula', BC, o3(kn, s * .02, -.02), o3(an, s * .02, .02), .009, .007);
@@ -175,10 +181,10 @@ List<Part> buildBody(bool f) {
     for (final j in [['shoulder', sh, .038], ['elbow', el, .028], ['wrist', wr, .02], ['hip', hp, .042], ['knee', kn, .042], ['ankle', an, .03]]) {
       final c = j[1] as List<double>, r = j[2] as double; g.ell('skeleton', j[0] as String, '$sd${j[0]} joint', JC, c[0], c[1], c[2], r, r, r);
     }
-    g.tube('vessels', 'artery', '$sd' 'arm artery', RED, [[.01, 1.4, 0], [s * .1, 1.44, .01], o3(el, 0, 0, .01), o3(wr, 0, 0, .01)], .0045);
-    g.tube('vessels', 'vein', '$sd' 'arm vein', BLU, [o3(wr, s * .01, 0, -.01), o3(el, s * .01, 0, -.02), [s * .06, 1.42, -.02], [.01, 1.36, -.02]], .0045);
-    g.tube('vessels', 'artery', '$sd' 'leg artery', RED, [[0, .95, -.035], o3(hp, 0, -.06, -.01), o3(kn, 0, 0, -.02), o3(an, 0, 0, -.02)], .007);
-    g.tube('vessels', 'vein', '$sd' 'leg vein', BLU, [o3(an, s * .012, 0, -.035), o3(kn, s * .012, 0, -.04), o3(hp, s * .012, -.06, -.03), [0, .95, -.02]], .007);
+    g.tube('vessels', 'artery', '$sd' 'arm artery', RED, [[.01, 1.4, 0], [s * .1, 1.44, .01], o3(el, 0, 0, -.018), o3(wr, 0, 0, -.018)], .0032);
+    g.tube('vessels', 'vein', '$sd' 'arm vein', BLU, [o3(wr, s * .01, 0, -.024), o3(el, s * .01, 0, -.026), [s * .06, 1.42, -.02], [.01, 1.36, -.02]], .0032);
+    g.tube('vessels', 'artery', '$sd' 'leg artery', RED, [[0, .95, -.035], o3(hp, 0, -.06, -.028), o3(kn, 0, 0, -.028), o3(an, 0, 0, -.025)], .0048);
+    g.tube('vessels', 'vein', '$sd' 'leg vein', BLU, [o3(an, s * .012, 0, -.025), o3(kn, s * .012, 0, -.03), o3(hp, s * .012, -.06, -.028), [0, .95, -.02]], .0048);
     g.tube('vessels', 'artery', '$sd' 'carotid artery', RED, [[s * .02, 1.38, .02], [s * .03, 1.5, .02], [s * .035, 1.62, .02]], .006);
     g.tube('vessels', 'vein', '$sd' 'jugular vein', BLU, [[s * .04, 1.6, -.01], [s * .045, 1.5, -.01], [s * .03, 1.4, 0]], .006);
     g.tube('nerves', 'nerve', '$sd' 'arm nerve', NV, [[0, 1.46, -.07], o3(sh, 0, 0, -.03), o3(el, 0, 0, -.03), o3(wr, 0, 0, -.02)], .003);
@@ -211,7 +217,12 @@ List<Part> buildBody(bool f) {
     g.tap('muscle', 'muscle', '${sd}tibialis anterior', 0xFFFF8968, [kn[0], .46, .035], [an[0], .12, .025], .022, .012);
     g.tap('skin', 'skin', 'Skin · arm', SK, sh, el, .045, .035);
     g.tap('skin', 'skin', 'Skin · forearm', SK, el, wr, .033, .025);
-    g.ell('skin', 'skin', 'Skin · hand', SK, wr[0] + s * .01, wr[1] - .07, wr[2] + .02, .03, .07, .015);
+    g.ell('skin', 'skin', 'Skin · hand', SK, wr[0] + s * .01, wr[1] - .065, wr[2] + .012, .034, .073, .023);
+    for (var i = 0; i < 5; i++) {
+      final fingerStart = o3(wr, s * .01, -.1, .012);
+      final fingerEnd = o3(wr, s * (.02 + i * .004), -.174, .018 + i * .006);
+      g.tap('skin', 'skin', 'Skin · finger', SK, fingerStart, fingerEnd, .008, .006);
+    }
     g.tap('skin', 'skin', 'Skin · thigh', SK, hp, kn, .075, .06);
     g.tap('skin', 'skin', 'Skin · leg', SK, kn, an, .05, .03);
     g.ell('skin', 'skin', 'Skin · foot', SK, an[0], .04, .05, .04, .035, .1);
@@ -235,8 +246,8 @@ List<Float32List> fineNet(bool f, double k) {
   void path(List<double> a, List<double> b, int n, double sp) {
     final l = m.sqrt(m.pow(b[0] - a[0], 2) + m.pow(b[1] - a[1], 2) + m.pow(b[2] - a[2], 2)), pd = [for (var i = 0; i < 3; i++) (b[i] - a[i]) / l];
     for (var i = 0; i <= n; i++) for (var c = 0; c < 2; c++) {
-      final p = [for (var d = 0; d < 3; d++) a[d] + (b[d] - a[d]) * i / n]; p[2] += c == 1 ? -.012 : .012;
-      final e = [pd[0] * 1.3 + (rn() - .5) * 1.4 + sp, pd[1] * 1.3 + (rn() - .5) * 1.4, pd[2] * 1.3 + (rn() - .5) * 1.4], mm = m.sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+      final p = [for (var d = 0; d < 3; d++) a[d] + (b[d] - a[d]) * i / n]; p[2] += c == 1 ? -.018 : -.030;
+      final e = [pd[0] * 1.3 + (rn() - .5) * 1.0 + sp, pd[1] * 1.3 + (rn() - .5) * 1.0, pd[2] * 1.1 + (rn() - .5) * .8], mm = m.sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
       br(p, [e[0] / mm, e[1] / mm, e[2] / mm], 3, A[c]);
     }
   }
@@ -306,6 +317,51 @@ class _HoloPageState extends State<HoloPage> {
   double outerSkinOpacity = 0.22;
   bool isolateSelection = false;
   final ValueNotifier<int> _viewRevision = ValueNotifier<int>(0);
+  final FocusNode _cameraFocusNode = FocusNode(debugLabel: 'Anatomy camera');
+
+  // Camera-space movement changes the model focus only; it never changes zoom.
+  static const double _panStep = 0.055;
+
+  KeyEventResult _handleCameraKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final rightX = m.cos(yaw);
+    final rightZ = -m.sin(yaw);
+    final upX = m.sin(yaw) * m.sin(pitch);
+    final upY = m.cos(pitch);
+    final upZ = m.cos(yaw) * m.sin(pitch);
+    var dx = 0.0, dy = 0.0, dz = 0.0;
+    switch (event.logicalKey) {
+      case LogicalKeyboardKey.keyA:
+        dx = -rightX * _panStep; dz = -rightZ * _panStep; break;
+      case LogicalKeyboardKey.keyD:
+        dx = rightX * _panStep; dz = rightZ * _panStep; break;
+      case LogicalKeyboardKey.keyW:
+        dx = upX * _panStep; dy = upY * _panStep; dz = upZ * _panStep; break;
+      case LogicalKeyboardKey.keyS:
+        dx = -upX * _panStep; dy = -upY * _panStep; dz = -upZ * _panStep; break;
+      default:
+        return KeyEventResult.ignored;
+    }
+    setState(() {
+      focusX += dx;
+      focusY += dy;
+      focusZ += dz;
+    });
+    _viewRevision.value++;
+    return KeyEventResult.handled;
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is PointerScrollEvent) {
+      final factor = m.exp(-event.scrollDelta.dy * 0.0015);
+      setState(() {
+        zoom = (zoom * factor).clamp(.45, 5.0).toDouble();
+      });
+      _viewRevision.value++;
+    }
+  }
 
   static const systems = <String, String>{
     'skin': 'Outer layer',
@@ -319,6 +375,7 @@ class _HoloPageState extends State<HoloPage> {
   @override
   void dispose() {
     _viewRevision.dispose();
+    _cameraFocusNode.dispose();
     super.dispose();
   }
 
@@ -510,8 +567,15 @@ class _HoloPageState extends State<HoloPage> {
                   valueListenable: _viewRevision,
                   builder: (context, revision, child) => Stack(
                   children: [
-                    GestureDetector(
+                    Focus(
+                      focusNode: _cameraFocusNode,
+                      autofocus: true,
+                      onKeyEvent: _handleCameraKey,
+                      child: Listener(
+                        onPointerSignal: _handlePointerSignal,
+                        child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
+                      onTapDown: (_) => _cameraFocusNode.requestFocus(),
                       onScaleStart: (_) => _gestureStartZoom = zoom,
                       onScaleUpdate: (d) {
                         if (d.pointerCount > 1) {
@@ -542,6 +606,8 @@ class _HoloPageState extends State<HoloPage> {
                         ),
                       ),
                       ),
+                      ),
+                      ),
                     ),
                     Positioned(
                       left: 14, top: 12,
@@ -549,7 +615,7 @@ class _HoloPageState extends State<HoloPage> {
                     ),
                     Positioned(
                       right: 14, top: 12,
-                      child: _glassTag('DRAG TO ROTATE  •  PINCH TO ZOOM', Icons.threed_rotation),
+                      child: _glassTag('DRAG ROTATE • WHEEL ZOOM • WASD MOVE', Icons.threed_rotation),
                     ),
                     Positioned(
                       left: 14,

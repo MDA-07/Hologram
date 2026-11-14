@@ -74,3 +74,15 @@ If `flutter analyze` reports an error, share the complete message and line numbe
 ## Ultimate prototype upgrade
 
 See `ULTIMATE_UPGRADE.md` for the added searchable Anatomy Library, structure focus, system isolation, hologram intensity control, visible-part caching, and validation instructions. The app remains a procedural educational prototype; medically reviewed GLB/GLTF assets are required for high-fidelity anatomy.
+
+
+## Camera controls (updated)
+
+- **Mouse wheel:** zoom in and out (0.45× to 5×).
+- **W / S:** move the view vertically through the model.
+- **A / D:** move the view horizontally through the model.
+- **Drag:** rotate the model.
+- **Pinch:** zoom on touch devices.
+- Click the model once if the keyboard controls do not respond; this gives the anatomy viewer keyboard focus.
+
+WASD pans the camera focus in camera-relative directions. It does not modify the zoom value.
