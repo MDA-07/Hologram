@@ -183,14 +183,32 @@ List<Part> buildBody(bool f) {
     g.tube('vessels', 'vein', '$sd' 'jugular vein', BLU, [[s * .04, 1.6, -.01], [s * .045, 1.5, -.01], [s * .03, 1.4, 0]], .006);
     g.tube('nerves', 'nerve', '$sd' 'arm nerve', NV, [[0, 1.46, -.07], o3(sh, 0, 0, -.03), o3(el, 0, 0, -.03), o3(wr, 0, 0, -.02)], .003);
     g.tube('nerves', 'nerve', '$sd' 'sciatic nerve', NV, [[0, .95, -.07], [s * .07, .82, -.06], o3(kn, 0, 0, -.05), o3(an, 0, 0, -.03)], .004);
-    g.tap('muscle', 'muscle', '${sd}biceps', MU, o3(sh, 0, 0, .025), o3(el, 0, 0, .02), .035, .025);
-    g.tap('muscle', 'muscle', '${sd}forearm muscles', MU, el, wr, .028, .015);
-    g.ell('muscle', 'muscle', '${sd}pectoral', MU, s * .075, 1.34, .075, .075, .05, .03);
-    g.ell('muscle', 'muscle', '${sd}deltoid', MU, s * sw, 1.42, 0, .04, .05, .04);
-    for (var r = 0; r < 3; r++) g.ell('muscle', 'muscle', 'Abdominal muscle', MU, s * .025, 1.2 - r * .06, .1, .022, .025, .015);
-    g.ell('muscle', 'muscle', '${sd}gluteus', MU, s * .075, .9, -.08, .07, .07, .05);
-    g.tap('muscle', 'muscle', '${sd}quadriceps', MU, o3(hp, 0, 0, .02), o3(kn, 0, 0, .02), .065, .042);
-    g.tap('muscle', 'muscle', '${sd}calf', MU, [kn[0], .46, -.02], [an[0], .12, -.01], .042, .02);
+    // Layered superficial muscle groups. These are stylized anatomical masses,
+    // not clinical-grade muscle meshes; higher segment counts give smoother contours.
+    g.ell('muscle', 'muscle', '${sd}pectoralis major', MU, s * .075, 1.345, .078, .078, .052, .034);
+    g.ell('muscle', 'muscle', '${sd}pectoralis minor', 0xFFFF8062, s * .052, 1.30, .055, .038, .045, .022);
+    g.ell('muscle', 'muscle', '${sd}deltoid anterior', MU, s * sw, 1.425, .035, .043, .052, .046);
+    g.ell('muscle', 'muscle', '${sd}deltoid posterior', 0xFFFF805C, s * sw, 1.415, -.035, .042, .052, .04);
+    g.tap('muscle', 'muscle', '${sd}biceps brachii', MU, o3(sh, 0, 0, .032), o3(el, 0, 0, .028), .036, .024);
+    g.tap('muscle', 'muscle', '${sd}triceps brachii', 0xFFE95743, o3(sh, 0, 0, -.03), o3(el, 0, 0, -.025), .034, .022);
+    g.tap('muscle', 'muscle', '${sd}brachioradialis', 0xFFFF8A65, o3(el, 0, 0, .025), o3(wr, 0, 0, .018), .021, .011);
+    g.tap('muscle', 'muscle', '${sd}forearm flexors', MU, o3(el, 0, 0, .005), o3(wr, 0, 0, .005), .022, .012);
+    g.tap('muscle', 'muscle', '${sd}forearm extensors', 0xFFE95743, o3(el, 0, 0, -.018), o3(wr, 0, 0, -.012), .02, .01);
+    g.ell('muscle', 'muscle', '${sd}external oblique', 0xFFE95743, s * .085, 1.12, .055, .035, .105, .025);
+    for (var r = 0; r < 4; r++) {
+      g.ell('muscle', 'muscle', '${sd}rectus abdominis ${r + 1}', MU, s * .024, 1.205 - r * .052, .105, .022, .024, .014);
+    }
+    g.ell('muscle', 'muscle', '${sd}serratus anterior', 0xFFFF8968, s * .105, 1.255, .035, .022, .075, .022);
+    g.ell('muscle', 'muscle', '${sd}latissimus dorsi', 0xFFE95743, s * .085, 1.19, -.065, .055, .15, .025);
+    g.ell('muscle', 'muscle', '${sd}gluteus maximus', MU, s * .075, .9, -.08, .073, .073, .052);
+    g.ell('muscle', 'muscle', '${sd}gluteus medius', 0xFFFF8968, s * .105, .96, -.055, .045, .052, .035);
+    g.tap('muscle', 'muscle', '${sd}rectus femoris', MU, o3(hp, 0, 0, .045), o3(kn, 0, 0, .035), .032, .022);
+    g.tap('muscle', 'muscle', '${sd}vastus lateralis', 0xFFE95743, o3(hp, s * .035, 0, .015), o3(kn, s * .025, 0, .015), .04, .027);
+    g.tap('muscle', 'muscle', '${sd}vastus medialis', 0xFFFF8968, o3(hp, -s * .018, 0, .035), o3(kn, -s * .018, 0, .035), .027, .021);
+    g.tap('muscle', 'muscle', '${sd}hamstrings', 0xFFE95743, o3(hp, 0, 0, -.045), o3(kn, 0, 0, -.03), .036, .023);
+    g.tap('muscle', 'muscle', '${sd}gastrocnemius', MU, [kn[0], .46, -.035], [an[0], .16, -.025], .044, .018);
+    g.tap('muscle', 'muscle', '${sd}soleus', 0xFFE95743, [kn[0], .38, -.018], [an[0], .12, -.018], .027, .014);
+    g.tap('muscle', 'muscle', '${sd}tibialis anterior', 0xFFFF8968, [kn[0], .46, .035], [an[0], .12, .025], .022, .012);
     g.tap('skin', 'skin', 'Skin · arm', SK, sh, el, .045, .035);
     g.tap('skin', 'skin', 'Skin · forearm', SK, el, wr, .033, .025);
     g.ell('skin', 'skin', 'Skin · hand', SK, wr[0] + s * .01, wr[1] - .07, wr[2] + .02, .03, .07, .015);
@@ -285,6 +303,7 @@ class _HoloPageState extends State<HoloPage> {
   late List<Part> _visibleParts;
   late List<Float32List> vascularNetwork;
   double layerOpacity = 1.0;
+  double outerSkinOpacity = 0.22;
   bool isolateSelection = false;
   final ValueNotifier<int> _viewRevision = ValueNotifier<int>(0);
 
@@ -519,6 +538,7 @@ class _HoloPageState extends State<HoloPage> {
                           focusX: focusX, focusY: focusY, focusZ: focusZ,
                           networks: vascularNetwork,
                           layerOpacity: layerOpacity,
+                          outerSkinOpacity: outerSkinOpacity,
                         ),
                       ),
                       ),
@@ -619,6 +639,18 @@ class _HoloPageState extends State<HoloPage> {
                     const Text('HOLOGRAM', style: TextStyle(fontSize: 9, letterSpacing: 1, color: Colors.white54)),
                     Expanded(child: Slider(value: layerOpacity, min: .25, max: 1, onChanged: (v) { setState(() => layerOpacity = v); _viewRevision.value++; })),
                     Text('${(layerOpacity * 100).round()}%', style: const TextStyle(fontSize: 10, color: Colors.white60)),
+                  ]),
+                  Row(children: [
+                    const Icon(Icons.face_retouching_natural, size: 16, color: Colors.white54),
+                    const SizedBox(width: 7),
+                    const Text('OUTER SKIN', style: TextStyle(fontSize: 9, letterSpacing: 1, color: Colors.white54)),
+                    Expanded(child: Slider(
+                      value: outerSkinOpacity,
+                      min: 0,
+                      max: 1,
+                      onChanged: (v) { setState(() => outerSkinOpacity = v); _viewRevision.value++; },
+                    )),
+                    SizedBox(width: 34, child: Text('${(outerSkinOpacity * 100).round()}%', textAlign: TextAlign.end, style: const TextStyle(fontSize: 10, color: Colors.white60))),
                   ]),
                   Row(
                     children: [
@@ -745,8 +777,8 @@ class AnatomyPainter extends CustomPainter {
   final Part? selected;
   final bool female;
   final List<Float32List> networks;
-  final double focusX, focusY, focusZ, layerOpacity;
-  AnatomyPainter({required this.layerOpacity, required this.parts, required this.yaw, required this.pitch, required this.zoom, required this.selected, required this.female, required this.networks, required this.focusX, required this.focusY, required this.focusZ});
+  final double focusX, focusY, focusZ, layerOpacity, outerSkinOpacity;
+  AnatomyPainter({required this.layerOpacity, required this.outerSkinOpacity, required this.parts, required this.yaw, required this.pitch, required this.zoom, required this.selected, required this.female, required this.networks, required this.focusX, required this.focusY, required this.focusZ});
 
   (double, double, double) _rotate(double x, double y, double z) {
     final yy = y - focusY;
@@ -819,8 +851,9 @@ class AnatomyPainter extends CustomPainter {
       }
       if (visibleVertices == 0) continue;
 
-      final baseAlpha = part.sys == 'skin' ? 42 : part.sys == 'vessels' ? 220 : 205;
-      final alpha = (baseAlpha * layerOpacity).round().clamp(0, 255).toInt();
+      final baseAlpha = part.sys == 'skin' ? 235 : part.sys == 'vessels' ? 220 : 205;
+      final opacity = part.sys == 'skin' ? outerSkinOpacity : layerOpacity;
+      final alpha = (baseAlpha * opacity).round().clamp(0, 255).toInt();
       final color = identical(part, selected)
           ? const Color(0xFFFFE58A).withAlpha(240)
           : Color(part.col).withAlpha(alpha);
@@ -877,5 +910,5 @@ class AnatomyPainter extends CustomPainter {
   bool shouldRepaint(covariant AnatomyPainter oldDelegate) =>
       oldDelegate.parts != parts || oldDelegate.yaw != yaw ||
       oldDelegate.pitch != pitch || oldDelegate.zoom != zoom ||
-      oldDelegate.selected != selected || oldDelegate.female != female || oldDelegate.networks != networks || oldDelegate.focusX != focusX || oldDelegate.focusY != focusY || oldDelegate.focusZ != focusZ || oldDelegate.layerOpacity != layerOpacity;
+      oldDelegate.selected != selected || oldDelegate.female != female || oldDelegate.networks != networks || oldDelegate.focusX != focusX || oldDelegate.focusY != focusY || oldDelegate.focusZ != focusZ || oldDelegate.layerOpacity != layerOpacity || oldDelegate.outerSkinOpacity != outerSkinOpacity;
 }
