@@ -318,11 +318,6 @@ class _HoloPageState extends State<HoloPage> {
   bool isolateSelection = false;
   final ValueNotifier<int> _viewRevision = ValueNotifier<int>(0);
   final FocusNode _cameraFocusNode = FocusNode(debugLabel: 'Anatomy camera');
-  // Left mouse drag rotates; right mouse drag pans without rotating.
-  Offset? _lastMousePosition;
-  int _activeMouseButtons = 0;
-  bool _mouseDragging = false;
-
 
   // Camera-space movement changes the model focus only; it never changes zoom.
   static const double _panStep = 0.055;
@@ -356,40 +351,6 @@ class _HoloPageState extends State<HoloPage> {
     });
     _viewRevision.value++;
     return KeyEventResult.handled;
-  }
-
-  void _handleMousePointerDown(PointerDownEvent event) {
-    if (event.kind != PointerDeviceKind.mouse) return;
-    _activeMouseButtons = event.buttons;
-    _lastMousePosition = event.position;
-    _mouseDragging = (event.buttons & (kPrimaryMouseButton | kSecondaryMouseButton)) != 0;
-    _cameraFocusNode.requestFocus();
-  }
-
-  void _handleMousePointerMove(PointerMoveEvent event) {
-    if (event.kind != PointerDeviceKind.mouse || !_mouseDragging || _lastMousePosition == null) return;
-    final delta = event.position - _lastMousePosition!;
-    _lastMousePosition = event.position;
-
-    if ((_activeMouseButtons & kPrimaryMouseButton) != 0 ||
-        (event.buttons & kPrimaryMouseButton) != 0) {
-      yaw += delta.dx * .009;
-      pitch = (pitch + delta.dy * .009).clamp(-1.25, 1.25).toDouble();
-    } else if ((_activeMouseButtons & kSecondaryMouseButton) != 0 ||
-        (event.buttons & kSecondaryMouseButton) != 0) {
-      // Pan the model focus in screen space; yaw and pitch remain unchanged.
-      final panScale = (3.8 / zoom) / 420.0;
-      focusX -= delta.dx * panScale;
-      focusY += delta.dy * panScale;
-    }
-    _viewRevision.value++;
-  }
-
-  void _handleMousePointerUp(PointerEvent event) {
-    if (event.kind != PointerDeviceKind.mouse) return;
-    _activeMouseButtons = 0;
-    _lastMousePosition = null;
-    _mouseDragging = false;
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
@@ -582,8 +543,8 @@ class _HoloPageState extends State<HoloPage> {
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('HOLO • ANATOMY', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w800, fontSize: 16)),
-            Text('Interactive human anatomy explorer', style: TextStyle(fontSize: 11, color: Colors.white60)),
+            Text('HOLO • ANATOMY', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w800, fontSize: 17)),
+            Text('SPACEFLIGHT CREW ANATOMY WORKSTATION', style: TextStyle(fontSize: 10, color: Colors.white60, letterSpacing: .8)),
           ],
         ),
         backgroundColor: const Color(0xFF091A2A),
@@ -596,7 +557,9 @@ class _HoloPageState extends State<HoloPage> {
           ),
         ],
       ),
-      body: SafeArea(
+      body: LayoutBuilder(builder: (context, c) {
+        if (c.maxWidth >= 1050 && c.maxHeight >= 600) return _buildSpaceTabletWorkspace();
+        return SafeArea(
         child: Column(
           children: [
             Expanded(
@@ -612,16 +575,11 @@ class _HoloPageState extends State<HoloPage> {
                       onKeyEvent: _handleCameraKey,
                       child: Listener(
                         onPointerSignal: _handlePointerSignal,
-                        onPointerDown: _handleMousePointerDown,
-                        onPointerMove: _handleMousePointerMove,
-                        onPointerUp: _handleMousePointerUp,
-                        onPointerCancel: _handleMousePointerUp,
                         child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTapDown: (_) => _cameraFocusNode.requestFocus(),
                       onScaleStart: (_) => _gestureStartZoom = zoom,
                       onScaleUpdate: (d) {
-                        if (_mouseDragging) return;
                         if (d.pointerCount > 1) {
                           zoom = (_gestureStartZoom * d.scale).clamp(.65, 3.2).toDouble();
                         } else {
@@ -659,7 +617,7 @@ class _HoloPageState extends State<HoloPage> {
                     ),
                     Positioned(
                       right: 14, top: 12,
-                      child: _glassTag('LEFT DRAG ROTATE • RIGHT DRAG PAN • WHEEL ZOOM', Icons.threed_rotation),
+                      child: _glassTag('DRAG ROTATE • WHEEL ZOOM • WASD MOVE', Icons.threed_rotation),
                     ),
                     Positioned(
                       left: 14,
@@ -788,21 +746,204 @@ class _HoloPageState extends State<HoloPage> {
             ),
           ],
         ),
+      );
+      }),
+    );
+  }
+
+
+  // Space-tablet workspace: glove-friendly targets, fixed panels, no hover-only actions.
+  Widget _buildSpaceTabletWorkspace() {
+    return SafeArea(
+      child: Row(
+        children: [
+          SizedBox(width: 248, child: _spaceSystemPanel()),
+          const VerticalDivider(width: 1, color: Color(0xFF234052)),
+          Expanded(child: _spaceViewer()),
+          const VerticalDivider(width: 1, color: Color(0xFF234052)),
+          SizedBox(width: 270, child: _spaceInspector()),
+        ],
       ),
     );
   }
+
+  Widget _spaceSystemPanel() {
+    Widget systemRow(String key, IconData icon) {
+      final active = visible(key);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Material(
+          color: active ? const Color(0xFF12394B) : const Color(0xFF0D2232),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => toggleSystem(key, !active),
+            child: SizedBox(height: 56, child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(children: [
+                Icon(icon, color: active ? const Color(0xFF69E0FF) : const Color(0xFF9AB2C2), size: 22),
+                const SizedBox(width: 10),
+                Expanded(child: Text(systems[key]!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+                Icon(active ? Icons.visibility : Icons.visibility_off, size: 20, color: active ? const Color(0xFF69E0FF) : Colors.white38),
+              ]),
+            )),
+          ),
+        ),
+      );
+    }
+    return Container(
+      color: const Color(0xFF091A28),
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('ANATOMY SYSTEMS', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: Color(0xFF8BEAFF))),
+        const SizedBox(height: 12),
+        Expanded(child: SingleChildScrollView(child: Column(children: [
+          systemRow('skin', Icons.layers_outlined),
+          systemRow('muscle', Icons.accessibility_new),
+          systemRow('skeleton', Icons.boy_outlined),
+          systemRow('organs', Icons.favorite_border),
+          systemRow('vessels', Icons.water_drop_outlined),
+          systemRow('nerves', Icons.electric_bolt_outlined),
+        ]))),
+        const Divider(color: Color(0xFF294354)),
+        SizedBox(height: 54, child: FilledButton.icon(
+          onPressed: _openAnatomyBrowser,
+          icon: const Icon(Icons.search, size: 21), label: const Text('Find structure', style: TextStyle(fontSize: 14)),
+        )),
+      ]),
+    );
+  }
+
+  Widget _spaceViewer() {
+    final selectedPart = selected;
+    return LayoutBuilder(builder: (context, constraints) {
+      final viewSize = Size(constraints.maxWidth, constraints.maxHeight);
+      return ValueListenableBuilder<int>(
+        valueListenable: _viewRevision,
+        builder: (context, revision, child) => Stack(children: [
+          Positioned.fill(child: Focus(
+            focusNode: _cameraFocusNode, autofocus: true, onKeyEvent: _handleCameraKey,
+            child: Listener(onPointerSignal: _handlePointerSignal, child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (_) => _cameraFocusNode.requestFocus(),
+              onScaleStart: (_) => _gestureStartZoom = zoom,
+              onScaleUpdate: (d) {
+                if (d.pointerCount > 1) {
+                  zoom = (_gestureStartZoom * d.scale).clamp(.65, 3.2).toDouble();
+                } else {
+                  yaw += d.focalPointDelta.dx * .009;
+                  pitch = (pitch + d.focalPointDelta.dy * .009).clamp(-1.25, 1.25).toDouble();
+                }
+                _viewRevision.value++;
+              },
+              onTapUp: (d) => selectAt(d.localPosition, viewSize),
+              child: RepaintBoundary(child: CustomPaint(
+                size: Size.infinite,
+                painter: AnatomyPainter(parts: _visibleParts, yaw: yaw, pitch: pitch, zoom: zoom,
+                  selected: selectedPart, female: female, focusX: focusX, focusY: focusY, focusZ: focusZ,
+                  networks: vascularNetwork, layerOpacity: layerOpacity, outerSkinOpacity: outerSkinOpacity),
+              )),
+            )),
+          )),
+          Positioned(left: 16, top: 14, child: _glassTag(female ? 'FEMALE MODEL' : 'MALE MODEL', Icons.accessibility_new)),
+          Positioned(right: 16, top: 14, child: _glassTag('DRAG TO ROTATE  •  PINCH TO ZOOM', Icons.touch_app)),
+          Positioned(left: 14, top: 66, child: Wrap(spacing: 6, children: [
+            _viewButton('Front', () => setCameraView('front')),
+            _viewButton('Left', () => setCameraView('left')),
+            _viewButton('Right', () => setCameraView('right')),
+            _viewButton('Back', () => setCameraView('back')),
+          ])),
+          if (selectedPart != null) Positioned(left: 14, right: 14, bottom: 86, child: _selectedCard(selectedPart)),
+          Positioned(left: 12, right: 12, bottom: 10, child: _spaceCameraToolbar()),
+        ]),
+      );
+    });
+  }
+
+  Widget _spaceCameraToolbar() {
+    Widget tool(String label, IconData icon, VoidCallback action) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: SizedBox(height: 52, child: OutlinedButton.icon(
+        onPressed: action, icon: Icon(icon, size: 19), label: Text(label, style: const TextStyle(fontSize: 13)),
+        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12), foregroundColor: const Color(0xFFBCEFFF), side: const BorderSide(color: Color(0xFF31576B)), backgroundColor: const Color(0xEE0A1D2B)),
+      )),
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      decoration: BoxDecoration(color: const Color(0xEE091A28), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF29495B))),
+      child: Row(children: [
+        tool('Reset', Icons.center_focus_strong, () => setState(() { yaw = 0; pitch = 0; zoom = 1; selected = null; isolateSelection = false; focusX = 0; focusY = .88; focusZ = 0; _refreshVisibleParts(); })),
+        tool('−', Icons.zoom_out, () => setState(() => zoom = (zoom / 1.2).clamp(.65, 3.2).toDouble())),
+        Expanded(child: Slider(value: zoom.clamp(.65, 3.2).toDouble(), min: .65, max: 3.2, onChanged: (v) => setState(() => zoom = v))),
+        tool('+', Icons.zoom_in, () => setState(() => zoom = (zoom * 1.2).clamp(.65, 3.2).toDouble())),
+      ]),
+    );
+  }
+
+  Widget _spaceInspector() {
+    final part = selected;
+    return Container(
+      color: const Color(0xFF091A28),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('MISSION VIEW', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: Color(0xFF8BEAFF))),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _genderButton('Male', !female, () => changeModel(false))),
+          const SizedBox(width: 8),
+          Expanded(child: _genderButton('Female', female, () => changeModel(true))),
+        ]),
+        const SizedBox(height: 16),
+        const Text('DISPLAY PRESETS', style: TextStyle(fontSize: 12, color: Colors.white60, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        const SizedBox(height: 8),
+        for (final item in [
+          ('Surface', 'surface', Icons.person_outline), ('Skeleton', 'skeletal', Icons.accessibility),
+          ('Muscles', 'muscular', Icons.fitness_center), ('Organs', 'organs', Icons.favorite_outline),
+          ('Circulatory', 'circulatory', Icons.water_drop_outlined), ('All systems', 'all', Icons.layers),
+        ]) Padding(padding: const EdgeInsets.only(bottom: 7), child: SizedBox(height: 48, child: OutlinedButton.icon(
+          onPressed: () => applyPreset(item.$2), icon: Icon(item.$3, size: 19), label: Text(item.$1),
+          style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, foregroundColor: const Color(0xFFBCEFFF), side: const BorderSide(color: Color(0xFF29495B)), padding: const EdgeInsets.symmetric(horizontal: 12)),
+        ))),
+        const Divider(color: Color(0xFF294354), height: 24),
+        const Text('LAYER TRANSPARENCY', style: TextStyle(fontSize: 12, color: Colors.white60, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        _spaceSlider('Hologram', layerOpacity, (v) { setState(() => layerOpacity = v); _viewRevision.value++; }),
+        _spaceSlider('Outer skin', outerSkinOpacity, (v) { setState(() => outerSkinOpacity = v); _viewRevision.value++; }),
+        const Divider(color: Color(0xFF294354), height: 24),
+        const Text('SELECTED STRUCTURE', style: TextStyle(fontSize: 12, color: Colors.white60, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        const SizedBox(height: 8),
+        if (part == null) const Expanded(child: Center(child: Text('Tap a structure\non the model to inspect it', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, height: 1.5))))
+        else Expanded(child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(part.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF8BEAFF))),
+          const SizedBox(height: 8),
+          Text((kInfo[part.id] ?? kInfo[part.sys] ?? 'Anatomical structure selected.').split('|').first, style: const TextStyle(fontSize: 14, height: 1.45)),
+          const SizedBox(height: 12),
+          SizedBox(height: 48, child: FilledButton.icon(onPressed: () => setState(() { isolateSelection = !isolateSelection; _refreshVisibleParts(); }), icon: const Icon(Icons.filter_center_focus), label: Text(isolateSelection ? 'Show all systems' : 'Isolate system'))),
+          const SizedBox(height: 8),
+          SizedBox(height: 48, child: OutlinedButton.icon(onPressed: _openAnatomyBrowser, icon: const Icon(Icons.menu_book), label: const Text('Browse structures'))),
+        ]))),
+      ]),
+    );
+  }
+
+  Widget _spaceSlider(String label, double value, ValueChanged<double> onChanged) => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [Expanded(child: Text(label, style: const TextStyle(fontSize: 13))), Text('${(value * 100).round()}%', style: const TextStyle(fontSize: 13, color: Color(0xFF8BEAFF)))]),
+      Slider(value: value.clamp(0.0, 1.0), min: 0, max: 1, onChanged: onChanged),
+    ]),
+  );
 
   Widget _viewButton(String label, VoidCallback action) => Padding(
     padding: const EdgeInsets.only(right: 3),
     child: TextButton(
       onPressed: action,
       style: TextButton.styleFrom(
-        minimumSize: const Size(0, 28),
+        minimumSize: const Size(48, 44),
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         foregroundColor: const Color(0xFF9DEBFF),
         backgroundColor: const Color(0xCC0B2233),
         textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
-        visualDensity: VisualDensity.compact,
+        visualDensity: VisualDensity.standard,
       ),
       child: Text(label),
     ),
@@ -813,7 +954,7 @@ class _HoloPageState extends State<HoloPage> {
     child: OutlinedButton(
       onPressed: action,
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 30),
+        minimumSize: const Size(48, 44),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
         foregroundColor: const Color(0xFF9DEBFF),
         side: const BorderSide(color: Color(0xFF28536A)),
@@ -978,9 +1119,29 @@ class AnatomyPainter extends CustomPainter {
       canvas.drawVertices(vertices, BlendMode.srcOver, Paint()..isAntiAlias = false);
     }
 
-    // The fine vessel overlay is not drawn over the completed body anymore:
-    // that overlay ignored surface depth and made vessels float above the skin.
-    // The vessel meshes remain rendered as ordinary anatomical parts.
+    // Batch the fine vessel network into one path per colour instead of issuing
+    // a Canvas drawLine call for every tiny branch segment.
+    if (parts.any((part) => part.sys == 'vessels')) {
+      for (var channel = 0; channel < networks.length; channel++) {
+        final data = networks[channel];
+        final vesselPath = Path();
+        for (var i = 0; i + 5 < data.length; i += 6) {
+          final a = _project(data[i], data[i + 1], data[i + 2], size);
+          final b = _project(data[i + 3], data[i + 4], data[i + 5], size);
+          if (a.$2 > .12 && b.$2 > .12) {
+            vesselPath.moveTo(a.$1.dx, a.$1.dy);
+            vesselPath.lineTo(b.$1.dx, b.$1.dy);
+          }
+        }
+        final vesselPaint = Paint()
+          ..color = (channel == 0 ? const Color(0xFFFF465B) : const Color(0xFF4D8DFF)).withAlpha(145)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = .65
+          ..strokeCap = StrokeCap.round
+          ..isAntiAlias = false;
+        canvas.drawPath(vesselPath, vesselPaint);
+      }
+    }
 
     // A subtle cyan silhouette halo reinforces the holographic presentation.
     final halo = Paint()..color = const Color(0x183CDFFF)..style = PaintingStyle.stroke..strokeWidth = 2.0
