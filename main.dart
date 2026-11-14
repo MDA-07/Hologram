@@ -263,6 +263,11 @@ class HoloPage extends StatefulWidget {
 }
 
 class _HoloPageState extends State<HoloPage> {
+  // Geometry is immutable between model changes; build it once and reuse it.
+  static final List<Part> _maleParts = buildBody(false);
+  static final List<Part> _femaleParts = buildBody(true);
+  static final List<Float32List> _maleNetwork = fineNet(false, 1.0);
+  static final List<Float32List> _femaleNetwork = fineNet(true, .93);
   bool female = false;
   bool skinVisible = false;
   bool musclesVisible = false;
@@ -291,8 +296,8 @@ class _HoloPageState extends State<HoloPage> {
   @override
   void initState() {
     super.initState();
-    parts = buildBody(female);
-    vascularNetwork = fineNet(female, female ? .93 : 1.0);
+    parts = female ? _femaleParts : _maleParts;
+    vascularNetwork = female ? _femaleNetwork : _maleNetwork;
   }
 
   bool visible(String sys) {
@@ -323,8 +328,8 @@ class _HoloPageState extends State<HoloPage> {
   void changeModel(bool toFemale) {
     setState(() {
       female = toFemale;
-      parts = buildBody(female);
-      vascularNetwork = fineNet(female, female ? .93 : 1.0);
+      parts = female ? _femaleParts : _maleParts;
+      vascularNetwork = female ? _femaleNetwork : _maleNetwork;
       selected = null;
       yaw = 0;
       pitch = 0;
@@ -346,7 +351,7 @@ class _HoloPageState extends State<HoloPage> {
         nearest = part;
       }
     }
-       if (nearest != null) {
+    if (nearest != null) {
       final Part selectedPart = nearest;
 
       setState(() {
@@ -422,7 +427,8 @@ class _HoloPageState extends State<HoloPage> {
                         }
                       }),
                       onTapUp: (d) => selectAt(d.localPosition, viewSize),
-                      child: CustomPaint(
+                      child: RepaintBoundary(
+                        child: CustomPaint(
                         size: Size.infinite,
                         painter: AnatomyPainter(
                           parts: parts.where((p) => visible(p.sys)).toList(),
@@ -434,6 +440,7 @@ class _HoloPageState extends State<HoloPage> {
                           focusX: focusX, focusY: focusY, focusZ: focusZ,
                           networks: vascularNetwork,
                         ),
+                      ),
                       ),
                     ),
                     Positioned(
@@ -475,22 +482,26 @@ class _HoloPageState extends State<HoloPage> {
                   const SizedBox(height: 12),
                   const Text('ANATOMICAL LAYERS', style: TextStyle(fontSize: 10, letterSpacing: 1.5, color: Colors.white54, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: systems.entries.map((entry) {
-                      final active = visible(entry.key);
-                      return FilterChip(
-                        label: Text(entry.value, style: const TextStyle(fontSize: 11)),
-                        selected: active,
-                        showCheckmark: true,
-                        onSelected: (v) => toggleSystem(entry.key, v),
-                        visualDensity: VisualDensity.compact,
-                        backgroundColor: const Color(0xFF102638),
-                        selectedColor: const Color(0xFF14516A),
-                        side: BorderSide(color: active ? const Color(0xFF55DFFF) : const Color(0xFF294253)),
-                      );
-                    }).toList(),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: systems.entries.map((entry) {
+                        final active = visible(entry.key);
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 7),
+                          child: FilterChip(
+                            label: Text(entry.value, style: const TextStyle(fontSize: 11)),
+                            selected: active,
+                            showCheckmark: true,
+                            onSelected: (v) => toggleSystem(entry.key, v),
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: const Color(0xFF102638),
+                            selectedColor: const Color(0xFF14516A),
+                            side: BorderSide(color: active ? const Color(0xFF55DFFF) : const Color(0xFF294253)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -628,26 +639,39 @@ class AnatomyPainter extends CustomPainter {
     for (final part in parts) {
       final alpha = part.sys == 'skin' ? 42 : part.sys == 'vessels' ? 220 : 205;
       final base = Color(part.col).withAlpha(alpha);
+      // A mesh vertex is shared by many triangles. Project it only once per frame.
+      final vertexCount = part.p.length ~/ 3;
+      final projected = List<(Offset, double)>.generate(vertexCount, (v) {
+        final j = v * 3;
+        return _project(part.p[j], part.p[j + 1], part.p[j + 2], size);
+      }, growable: false);
+      final selectedPart = identical(part, selected);
+      final color = selectedPart ? const Color(0xFFFFE58A).withAlpha(240) : base;
       for (int i = 0; i + 2 < part.ixL.length; i += 3) {
-        final ia = part.ixL[i] * 3, ib = part.ixL[i + 1] * 3, ic = part.ixL[i + 2] * 3;
-        final a = _project(part.p[ia], part.p[ia + 1], part.p[ia + 2], size);
-        final b = _project(part.p[ib], part.p[ib + 1], part.p[ib + 2], size);
-        final c = _project(part.p[ic], part.p[ic + 1], part.p[ic + 2], size);
+        final a = projected[part.ixL[i]];
+        final b = projected[part.ixL[i + 1]];
+        final c = projected[part.ixL[i + 2]];
         if (a.$2 <= .12 || b.$2 <= .12 || c.$2 <= .12) continue;
-        final depth = (a.$2 + b.$2 + c.$2) / 3;
-        final selectedPart = identical(part, selected);
-        final color = selectedPart ? const Color(0xFFFFE58A).withAlpha(240) : base;
-        faces.add(_Face(a.$1, b.$1, c.$1, depth, color));
+        faces.add(_Face(a.$1, b.$1, c.$1, (a.$2 + b.$2 + c.$2) / 3, color));
       }
     }
+    // Keep transparent hologram depth order, but submit all triangles in one GPU batch.
     faces.sort((a, b) => b.depth.compareTo(a.depth));
-    final fill = Paint()..style = PaintingStyle.fill;
-    final edge = Paint()..style = PaintingStyle.stroke..strokeWidth = .35..color = const Color(0x335FEAFF);
-    for (final face in faces) {
-      final path = Path()..moveTo(face.a.dx, face.a.dy)..lineTo(face.b.dx, face.b.dy)..lineTo(face.c.dx, face.c.dy)..close();
-      fill.color = face.color;
-      canvas.drawPath(path, fill);
-      canvas.drawPath(path, edge);
+    if (faces.isNotEmpty) {
+      final positions = Float32List(faces.length * 6);
+      final colors = Int32List(faces.length * 3);
+      var pi = 0;
+      var ci = 0;
+      for (final face in faces) {
+        positions[pi++] = face.a.dx; positions[pi++] = face.a.dy;
+        colors[ci++] = face.color.value;
+        positions[pi++] = face.b.dx; positions[pi++] = face.b.dy;
+        colors[ci++] = face.color.value;
+        positions[pi++] = face.c.dx; positions[pi++] = face.c.dy;
+        colors[ci++] = face.color.value;
+      }
+      final vertices = ui.Vertices.raw(ui.VertexMode.triangles, positions, colors: colors);
+      canvas.drawVertices(vertices, BlendMode.srcOver, Paint()..isAntiAlias = false);
     }
 
     // Fine branching vessel network, based on the supplied vascular reference.

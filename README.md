@@ -31,3 +31,15 @@ The branching small-vessel overlay is a procedural visual approximation inspired
 - `lib/render/` — original scene rendering implementation.
 - `lib/world/` — original object-pooling/world utilities.
 - `reference_images/` — supplied visual references from `B.zip`.
+
+## Performance update
+
+The optimized viewer reuses the male/female anatomy meshes instead of rebuilding them on every switch. The painter now projects each mesh vertex once per frame and submits the sorted triangle geometry in a single `Canvas.drawVertices` batch. Per-triangle path creation and wireframe strokes were removed because they were a major CPU cost. The anatomy layer selector is horizontally scrollable to keep the control area compact.
+
+For best performance, run a release build on a physical device:
+
+```bash
+flutter run --release
+```
+
+Debug mode is substantially slower for this CPU-based custom renderer. If the viewer still struggles on lower-end devices, turn off the fine blood-vessel network and show only the main vessels, or reduce mesh detail further.
