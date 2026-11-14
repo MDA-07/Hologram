@@ -94,7 +94,7 @@ class Gen {
     out.add(pt); return pt;
   }
   Part ell(String s, String id, String nm, int c, double cx, double cy, double cz, double rx, double ry, double rz, {int an = 0}) {
-    final b = B(); const la = 8, lo = 12;
+    final b = B(); const la = 12, lo = 18;
     for (var i = 0; i <= la; i++) { final ph = m.pi * i / la; for (var j = 0; j <= lo; j++) { final th = 2 * m.pi * j / lo, x = m.sin(ph) * m.cos(th), y = m.cos(ph), z = m.sin(ph) * m.sin(th); b.v(cx + rx * x, cy + ry * y, cz + rz * z, x / rx, y / ry, z / rz); } }
     for (var i = 0; i < la; i++) for (var j = 0; j < lo; j++) { final a = i * (lo + 1) + j; b.t(a, a + lo + 1, a + 1); b.t(a + lo + 1, a + lo + 2, a + 1); }
     b.pk.add([cx, cy, cz, [rx, ry, rz].reduce(m.max)]);
@@ -119,7 +119,7 @@ class Gen {
     return _fin(s, id, nm, c, b, 0);
   }
   Part lathe(String s, String id, String nm, int c, List<List<double>> pr, double zs) {
-    final b = B(); const sg = 20;
+    final b = B(); const sg = 28;
     for (final q in pr) for (var j = 0; j <= sg; j++) { final th = 2 * m.pi * j / sg; b.v(q[0] * m.cos(th), q[1], q[0] * m.sin(th) * zs, m.cos(th), 0, m.sin(th) / zs); }
     for (var i = 0; i < pr.length - 1; i++) for (var j = 0; j < sg; j++) { final a = i * (sg + 1) + j; b.t(a, a + sg + 1, a + 1); b.t(a + sg + 1, a + sg + 2, a + 1); }
     for (final q in pr) b.pk.add([0, q[1], 0, q[0] * .9]);
@@ -132,8 +132,12 @@ List<double> o3(List<double> p, [double x = 0, double y = 0, double z = 0]) => [
 List<Part> buildBody(bool f) {
   final g = Gen(f ? .93 : 1.0);
   final sw = f ? .175 : .205, hw = f ? .09 : .08, wR = f ? .115 : .135, hR = f ? .17 : .15, cR = f ? .15 : .168, rc = f ? .93 : 1.08;
-  const BC = 0xFFE6F7FF, JC = 0xFF9FE8FF, RED = 0xFFFF4A5C, BLU = 0xFF4A8CFF, SK = 0xFF4FD8FF, MU = 0xFFFF6A4A, NV = 0xFFFFD84A;
-  g.lathe('skin', 'skin', 'Skin · torso', SK, [[0, .8], [hR * .9, .82], [hR, .93], [wR, 1.08], [cR, 1.28], [cR * 1.02, 1.4], [.1, 1.46], [.055, 1.5], [0, 1.5]], .62);
+  const BC = 0xFFE6F7FF, JC = 0xFF9FE8FF, RED = 0xFFFF4A5C, BLU = 0xFF4A8CFF, SK = 0xFFB7E5F2, MU = 0xFFFF6A4A, NV = 0xFFFFD84A;
+  g.lathe('skin', 'skin', 'Skin · torso', SK,
+    [[0, .78], [hR * .72, .80], [hR * .96, .86], [hR, .94],
+      [wR * .96, 1.04], [wR, 1.10], [cR * .94, 1.25],
+      [cR, 1.32], [cR * .98, 1.39], [.105, 1.44],
+      [.075, 1.48], [.052, 1.52], [0, 1.53]], .66);
   g.tap('skin', 'skin', 'Skin · neck', SK, [0, 1.45, 0], [0, 1.56, .005], .05, .045);
   g.ell('skin', 'skin', 'Skin · head', SK, 0, 1.63, 0, .09, .125, .1);
   if (f) for (final s in [-1.0, 1.0]) g.ell('skin', 'skin', 'Skin · chest', SK, s * .055, 1.31, .09, .05, .05, .045);
@@ -168,13 +172,26 @@ List<Part> buildBody(bool f) {
     g.ell('skeleton', 'girdle', '${sd}scapula', BC, s * (sw - .05), 1.38, -.07, .06, .08, .012);
     g.tap('skeleton', 'humerus', '${sd}humerus', BC, sh, el, .02, .016);
     g.tap('skeleton', 'forearm', '${sd}radius & ulna', BC, el, wr, .015, .01);
-    g.tap('skeleton', 'hand', '${sd}hand', BC, wr, o3(wr, s * .01, -.1, .02), .02, .012);
-    for (var i = 0; i < 5; i++) {
-      final fingerStart = o3(wr, s * .01, -.1, .012);
-      final fingerEnd = o3(wr, s * (.02 + i * .004), -.174, .018 + i * .006);
-      // Keep phalanges comfortably inside the hand/finger skin envelope.
-      g.tap('skeleton', 'hand', '${sd}finger', BC, fingerStart, fingerEnd, .0032, .0022);
+    final palmBase = o3(wr, s * .008, -.025, .012);
+    final palmTip = o3(wr, s * .008, -.082, .014);
+    g.tap('skeleton', 'hand', '${sd}metacarpals', BC, palmBase, palmTip, .014, .011);
+    // Four fingers fan gently from the palm. Each has three tapered phalanges
+    // and small joint gaps so the hand reads as a hand rather than five rods.
+    for (var i = 0; i < 4; i++) {
+      final spread = (i - 1.5) * .014;
+      final base = o3(wr, s * (.008 + spread), -.074, .014);
+      final mid1 = o3(wr, s * (.008 + spread * 1.12), -.108 - (i == 1 || i == 2 ? .004 : 0), .017);
+      final mid2 = o3(wr, s * (.008 + spread * 1.28), -.139 - (i == 1 || i == 2 ? .004 : 0), .019);
+      final tip = o3(wr, s * (.008 + spread * 1.42), -.164 - (i == 1 || i == 2 ? .004 : 0), .02);
+      g.tap('skeleton', 'hand', '${sd}${['index', 'middle', 'ring', 'little'][i]} finger proximal phalanx', BC, base, mid1, .0042, .0037);
+      g.tap('skeleton', 'hand', '${sd}${['index', 'middle', 'ring', 'little'][i]} finger middle phalanx', BC, mid1, mid2, .0035, .0030);
+      g.tap('skeleton', 'hand', '${sd}${['index', 'middle', 'ring', 'little'][i]} finger distal phalanx', BC, mid2, tip, .0030, .0022);
     }
+    final thumbBase = o3(wr, s * .031, -.035, .018);
+    final thumbMid = o3(wr, s * .055, -.061, .022);
+    final thumbTip = o3(wr, s * .066, -.085, .025);
+    g.tap('skeleton', 'hand', '${sd}thumb proximal phalanx', BC, thumbBase, thumbMid, .0052, .0042);
+    g.tap('skeleton', 'hand', '${sd}thumb distal phalanx', BC, thumbMid, thumbTip, .0042, .0030);
     g.tap('skeleton', 'femur', '${sd}femur', BC, hp, kn, .028, .022);
     g.tap('skeleton', 'tibia', '${sd}tibia', BC, kn, an, .022, .016);
     g.tap('skeleton', 'tibia', '${sd}fibula', BC, o3(kn, s * .02, -.02), o3(an, s * .02, .02), .009, .007);
@@ -217,14 +234,34 @@ List<Part> buildBody(bool f) {
     g.tap('muscle', 'muscle', '${sd}gastrocnemius', MU, [kn[0], .46, -.035], [an[0], .16, -.025], .044, .018);
     g.tap('muscle', 'muscle', '${sd}soleus', 0xFFE95743, [kn[0], .38, -.018], [an[0], .12, -.018], .027, .014);
     g.tap('muscle', 'muscle', '${sd}tibialis anterior', 0xFFFF8968, [kn[0], .46, .035], [an[0], .12, .025], .022, .012);
-    g.tap('skin', 'skin', 'Skin · arm', SK, sh, el, .045, .035);
-    g.tap('skin', 'skin', 'Skin · forearm', SK, el, wr, .033, .025);
-    g.ell('skin', 'skin', 'Skin · hand', SK, wr[0] + s * .01, wr[1] - .065, wr[2] + .012, .034, .073, .023);
-    for (var i = 0; i < 5; i++) {
-      final fingerStart = o3(wr, s * .01, -.1, .012);
-      final fingerEnd = o3(wr, s * (.02 + i * .004), -.174, .018 + i * .006);
-      g.tap('skin', 'skin', 'Skin · finger', SK, fingerStart, fingerEnd, .008, .006);
+    // Smooth skin envelope: rounded shoulder cap, tapered upper arm/forearm,
+    // palm volume, individually shaped fingers and a distinct opposable thumb.
+    g.ell('skin', 'skin', 'Skin · shoulder', SK, sh[0], sh[1], sh[2], .052, .061, .052);
+    g.tap('skin', 'skin', 'Skin · upper arm', SK, sh, el, .047, .034);
+    g.ell('skin', 'skin', 'Skin · elbow', SK, el[0], el[1], el[2], .034, .036, .033);
+    g.tap('skin', 'skin', 'Skin · forearm', SK, el, wr, .035, .024);
+    final handCx = wr[0] + s * .008;
+    g.ell('skin', 'skin', 'Skin · palm', SK, handCx, wr[1] - .065, wr[2] + .014, .036, .049, .024);
+    for (var i = 0; i < 4; i++) {
+      final spread = (i - 1.5) * .014;
+      final yAdjust = (i == 1 || i == 2) ? .004 : 0.0;
+      final base = o3(wr, s * (.008 + spread), -.088, .017);
+      final mid1 = o3(wr, s * (.008 + spread * 1.12), -.116 - yAdjust, .019);
+      final mid2 = o3(wr, s * (.008 + spread * 1.28), -.145 - yAdjust, .02);
+      final tip = o3(wr, s * (.008 + spread * 1.42), -.169 - yAdjust, .021);
+      g.tap('skin', 'skin', 'Skin · ${['index', 'middle', 'ring', 'little'][i]} finger proximal', SK, base, mid1, .0090, .0075);
+      g.ell('skin', 'skin', 'Skin · finger joint', SK, mid1[0], mid1[1], mid1[2], .0078, .0080, .0078);
+      g.tap('skin', 'skin', 'Skin · finger middle', SK, mid1, mid2, .0074, .0062);
+      g.ell('skin', 'skin', 'Skin · finger joint', SK, mid2[0], mid2[1], mid2[2], .0066, .0068, .0065);
+      g.tap('skin', 'skin', 'Skin · fingertip', SK, mid2, tip, .0062, .0048);
+      g.ell('skin', 'skin', 'Skin · fingertip pad', SK, tip[0], tip[1], tip[2], .0052, .0070, .0055);
     }
+    o3(wr, s * .032, -.043, .019);
+    o3(wr, s * .056, -.069, .024);
+    o3(wr, s * .069, -.094, .027);
+    g.tap('skin', 'skin', 'Skin · thumb', SK, thumbBase, thumbMid, .011, .009);
+    g.tap('skin', 'skin', 'Skin · thumb tip', SK, thumbMid, thumbTip, .009, .0065);
+    g.ell('skin', 'skin', 'Skin · thumb pad', SK, thumbTip[0], thumbTip[1], thumbTip[2], .007, .009, .007);
     g.tap('skin', 'skin', 'Skin · thigh', SK, hp, kn, .075, .06);
     g.tap('skin', 'skin', 'Skin · leg', SK, kn, an, .05, .03);
     g.ell('skin', 'skin', 'Skin · foot', SK, an[0], .04, .05, .04, .035, .1);
@@ -284,7 +321,7 @@ class _HoloPageState extends State<HoloPage> {
   late List<Part> parts;
   late List<Part> _visibleParts;
   double layerOpacity = 1.0;
-  double outerSkinOpacity = 0.22;
+  double outerSkinOpacity = 0.34;
   bool isolateSelection = false;
   final ValueNotifier<int> _viewRevision = ValueNotifier<int>(0);
   final FocusNode _cameraFocusNode = FocusNode(debugLabel: 'Anatomy camera');
@@ -511,11 +548,12 @@ class _HoloPageState extends State<HoloPage> {
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('HOLO • ANATOMY', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w800, fontSize: 16)),
-            Text('Interactive human anatomy explorer', style: TextStyle(fontSize: 11, color: Colors.white60)),
+            Text('HOLO • ANATOMY', style: TextStyle(letterSpacing: 2.2, fontWeight: FontWeight.w900, fontSize: 16)),
+            Text('CREW HEALTH • ANATOMICAL WORKSTATION', style: TextStyle(fontSize: 10, letterSpacing: 1.0, color: Color(0xFF83B9CC))),
           ],
         ),
-        backgroundColor: const Color(0xFF091A2A),
+        backgroundColor: const Color(0xFF071522),
+        elevation: 0,
         actions: [
           IconButton(tooltip: 'Search anatomy', onPressed: _openAnatomyBrowser, icon: const Icon(Icons.search)),
           IconButton(
@@ -592,7 +630,7 @@ class _HoloPageState extends State<HoloPage> {
                     ),
                     Positioned(
                       right: 14, top: 12,
-                      child: _glassTag('DRAG ROTATE • WHEEL ZOOM • WASD MOVE', Icons.threed_rotation),
+                      child: _glassTag('LEFT DRAG ROTATE • RIGHT DRAG PAN • WHEEL ZOOM', Icons.threed_rotation),
                     ),
                     Positioned(
                       left: 14,
@@ -619,15 +657,15 @@ class _HoloPageState extends State<HoloPage> {
             ),
             Container(
               decoration: const BoxDecoration(
-                color: Color(0xFF0A1A29),
-                border: Border(top: BorderSide(color: Color(0xFF19364A))),
+                color: Color(0xFF091724),
+                border: Border(top: BorderSide(color: Color(0xFF245066), width: 1.2)),
               ),
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('QUICK VIEWS', style: TextStyle(fontSize: 10, letterSpacing: 1.5, color: Colors.white54, fontWeight: FontWeight.bold)),
+                  const Text('MISSION VIEW PRESETS', style: TextStyle(fontSize: 10, letterSpacing: 1.7, color: Color(0xFF83B9CC), fontWeight: FontWeight.w800)),
                   const SizedBox(height: 7),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -644,7 +682,7 @@ class _HoloPageState extends State<HoloPage> {
                   const SizedBox(height: 11),
                   Row(
                     children: [
-                      const Text('MODEL', style: TextStyle(fontSize: 10, letterSpacing: 1.5, color: Colors.white54, fontWeight: FontWeight.bold)),
+                      const Text('CREW MODEL', style: TextStyle(fontSize: 10, letterSpacing: 1.5, color: Color(0xFF83B9CC), fontWeight: FontWeight.w800)),
                       const Spacer(),
                       _genderButton('Male', !female, () => changeModel(false)),
                       const SizedBox(width: 8),
@@ -652,7 +690,7 @@ class _HoloPageState extends State<HoloPage> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  const Text('ANATOMICAL LAYERS', style: TextStyle(fontSize: 10, letterSpacing: 1.5, color: Colors.white54, fontWeight: FontWeight.bold)),
+                  const Text('ANATOMICAL SYSTEMS', style: TextStyle(fontSize: 10, letterSpacing: 1.5, color: Color(0xFF83B9CC), fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
