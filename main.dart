@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
+import 'package:holo_anatomy/health/health_monitor.dart';
+import 'package:holo_anatomy/health/emergency_reference.dart';
 
 void main() => runApp(const HoloApp());
 
@@ -232,35 +234,6 @@ List<Part> buildBody(bool f) {
   return g.out;
 }
 
-/// Fine capillary-like network (like the vessel reference): [arteries, veins] as line segments.
-List<Float32List> fineNet(bool f, double k) {
-  var s = 7; double rn() { s = s * 16807 % 2147483647; return s / 2147483647; }
-  final sw = f ? .175 : .205, hw = f ? .09 : .08, A = [<double>[], <double>[]];
-  void br(List<double> p, List<double> d, int n, List<double> a) {
-    if (n < 0) return;
-    final L = .025 + .03 * rn() * (n + 1) / 4, q = [p[0] + d[0] * L, p[1] + d[1] * L, p[2] + d[2] * L];
-    a.addAll([...p.map((v) => v * k), ...q.map((v) => v * k)]);
-    final c = rn() < .5 ? 2 : 1;
-    for (var i = 0; i < c; i++) { final e = [d[0] + rn() - .5, d[1] + rn() - .5, d[2] + rn() - .5], l = m.sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]); br(q, [e[0] / l, e[1] / l, e[2] / l], n - 1, a); }
-  }
-  void path(List<double> a, List<double> b, int n, double sp) {
-    final l = m.sqrt(m.pow(b[0] - a[0], 2) + m.pow(b[1] - a[1], 2) + m.pow(b[2] - a[2], 2)), pd = [for (var i = 0; i < 3; i++) (b[i] - a[i]) / l];
-    for (var i = 0; i <= n; i++) for (var c = 0; c < 2; c++) {
-      final p = [for (var d = 0; d < 3; d++) a[d] + (b[d] - a[d]) * i / n]; p[2] += c == 1 ? -.018 : -.030;
-      final e = [pd[0] * 1.3 + (rn() - .5) * 1.0 + sp, pd[1] * 1.3 + (rn() - .5) * 1.0, pd[2] * 1.1 + (rn() - .5) * .8], mm = m.sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
-      br(p, [e[0] / mm, e[1] / mm, e[2] / mm], 3, A[c]);
-    }
-  }
-  for (final q in [-1.0, 1.0]) {
-    final w = q * sw, h = q * hw;
-    path([w, 1.43, 0], [w + q * .04, 1.12, 0], 6, q * .5); path([w + q * .04, 1.12, 0], [w + q * .115, .87, .03], 5, q * .5); path([w + q * .115, .87, .03], [w + q * .15, .7, .05], 3, q * .5);
-    path([h, .92, 0], [h + q * .02, .51, .01], 8, q * .5); path([h + q * .02, .51, .01], [h + q * .035, .1, 0], 8, q * .5); path([h + q * .035, .1, 0], [h + q * .04, .03, .12], 3, q * .3);
-  }
-  path([0, 1.38, 0], [0, .95, 0], 10, 0); path([0, 1.45, 0], [0, 1.72, 0], 5, 0);
-  return [for (final a in A) Float32List.fromList(a)];
-}
-
-
 // ───────────────────────── interactive anatomy viewer ─────────────────────────
 
 class HoloApp extends StatelessWidget {
@@ -295,8 +268,6 @@ class _HoloPageState extends State<HoloPage> {
   // Geometry is immutable between model changes; build it once and reuse it.
   static final List<Part> _maleParts = buildBody(false);
   static final List<Part> _femaleParts = buildBody(true);
-  static final List<Float32List> _maleNetwork = fineNet(false, 1.0);
-  static final List<Float32List> _femaleNetwork = fineNet(true, .93);
   bool female = false;
   bool skinVisible = false;
   bool musclesVisible = false;
@@ -312,7 +283,6 @@ class _HoloPageState extends State<HoloPage> {
   Part? selected;
   late List<Part> parts;
   late List<Part> _visibleParts;
-  late List<Float32List> vascularNetwork;
   double layerOpacity = 1.0;
   double outerSkinOpacity = 0.22;
   bool isolateSelection = false;
@@ -383,7 +353,6 @@ class _HoloPageState extends State<HoloPage> {
   void initState() {
     super.initState();
     parts = female ? _femaleParts : _maleParts;
-    vascularNetwork = female ? _femaleNetwork : _maleNetwork;
     _refreshVisibleParts();
   }
 
@@ -432,8 +401,7 @@ class _HoloPageState extends State<HoloPage> {
     setState(() {
       female = toFemale;
       parts = female ? _femaleParts : _maleParts;
-      vascularNetwork = female ? _femaleNetwork : _maleNetwork;
-      selected = null;
+        selected = null;
       isolateSelection = false;
       yaw = 0;
       pitch = 0;
@@ -543,13 +511,23 @@ class _HoloPageState extends State<HoloPage> {
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('HOLO • ANATOMY', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w800, fontSize: 17)),
-            Text('SPACEFLIGHT CREW ANATOMY WORKSTATION', style: TextStyle(fontSize: 10, color: Colors.white60, letterSpacing: .8)),
+            Text('HOLO • ANATOMY', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w800, fontSize: 16)),
+            Text('Interactive human anatomy explorer', style: TextStyle(fontSize: 11, color: Colors.white60)),
           ],
         ),
         backgroundColor: const Color(0xFF091A2A),
         actions: [
           IconButton(tooltip: 'Search anatomy', onPressed: _openAnatomyBrowser, icon: const Icon(Icons.search)),
+          IconButton(
+            tooltip: 'Crew health log (offline)',
+            onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (BuildContext routeContext) { return const HealthMonitorPage(); })),
+            icon: const Icon(Icons.monitor_heart_outlined),
+          ),
+          IconButton(
+            tooltip: 'Emergency reference',
+            onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (BuildContext routeContext) { return const EmergencyReferencePage(); })),
+            icon: const Icon(Icons.emergency_outlined, color: Color(0xFFFF7373)),
+          ),
           IconButton(
             tooltip: 'Reset view',
             onPressed: () => setState(() { yaw = 0; pitch = 0; zoom = 1; selected = null; isolateSelection = false; focusX = 0; focusY = .88; focusZ = 0; _refreshVisibleParts(); }),
@@ -557,9 +535,7 @@ class _HoloPageState extends State<HoloPage> {
           ),
         ],
       ),
-      body: LayoutBuilder(builder: (context, c) {
-        if (c.maxWidth >= 1050 && c.maxHeight >= 600) return _buildSpaceTabletWorkspace();
-        return SafeArea(
+      body: SafeArea(
         child: Column(
           children: [
             Expanded(
@@ -602,7 +578,6 @@ class _HoloPageState extends State<HoloPage> {
                           selected: selectedPart,
                           female: female,
                           focusX: focusX, focusY: focusY, focusZ: focusZ,
-                          networks: vascularNetwork,
                           layerOpacity: layerOpacity,
                           outerSkinOpacity: outerSkinOpacity,
                         ),
@@ -746,204 +721,21 @@ class _HoloPageState extends State<HoloPage> {
             ),
           ],
         ),
-      );
-      }),
-    );
-  }
-
-
-  // Space-tablet workspace: glove-friendly targets, fixed panels, no hover-only actions.
-  Widget _buildSpaceTabletWorkspace() {
-    return SafeArea(
-      child: Row(
-        children: [
-          SizedBox(width: 248, child: _spaceSystemPanel()),
-          const VerticalDivider(width: 1, color: Color(0xFF234052)),
-          Expanded(child: _spaceViewer()),
-          const VerticalDivider(width: 1, color: Color(0xFF234052)),
-          SizedBox(width: 270, child: _spaceInspector()),
-        ],
       ),
     );
   }
-
-  Widget _spaceSystemPanel() {
-    Widget systemRow(String key, IconData icon) {
-      final active = visible(key);
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Material(
-          color: active ? const Color(0xFF12394B) : const Color(0xFF0D2232),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => toggleSystem(key, !active),
-            child: SizedBox(height: 56, child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(children: [
-                Icon(icon, color: active ? const Color(0xFF69E0FF) : const Color(0xFF9AB2C2), size: 22),
-                const SizedBox(width: 10),
-                Expanded(child: Text(systems[key]!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
-                Icon(active ? Icons.visibility : Icons.visibility_off, size: 20, color: active ? const Color(0xFF69E0FF) : Colors.white38),
-              ]),
-            )),
-          ),
-        ),
-      );
-    }
-    return Container(
-      color: const Color(0xFF091A28),
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('ANATOMY SYSTEMS', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: Color(0xFF8BEAFF))),
-        const SizedBox(height: 12),
-        Expanded(child: SingleChildScrollView(child: Column(children: [
-          systemRow('skin', Icons.layers_outlined),
-          systemRow('muscle', Icons.accessibility_new),
-          systemRow('skeleton', Icons.boy_outlined),
-          systemRow('organs', Icons.favorite_border),
-          systemRow('vessels', Icons.water_drop_outlined),
-          systemRow('nerves', Icons.electric_bolt_outlined),
-        ]))),
-        const Divider(color: Color(0xFF294354)),
-        SizedBox(height: 54, child: FilledButton.icon(
-          onPressed: _openAnatomyBrowser,
-          icon: const Icon(Icons.search, size: 21), label: const Text('Find structure', style: TextStyle(fontSize: 14)),
-        )),
-      ]),
-    );
-  }
-
-  Widget _spaceViewer() {
-    final selectedPart = selected;
-    return LayoutBuilder(builder: (context, constraints) {
-      final viewSize = Size(constraints.maxWidth, constraints.maxHeight);
-      return ValueListenableBuilder<int>(
-        valueListenable: _viewRevision,
-        builder: (context, revision, child) => Stack(children: [
-          Positioned.fill(child: Focus(
-            focusNode: _cameraFocusNode, autofocus: true, onKeyEvent: _handleCameraKey,
-            child: Listener(onPointerSignal: _handlePointerSignal, child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: (_) => _cameraFocusNode.requestFocus(),
-              onScaleStart: (_) => _gestureStartZoom = zoom,
-              onScaleUpdate: (d) {
-                if (d.pointerCount > 1) {
-                  zoom = (_gestureStartZoom * d.scale).clamp(.65, 3.2).toDouble();
-                } else {
-                  yaw += d.focalPointDelta.dx * .009;
-                  pitch = (pitch + d.focalPointDelta.dy * .009).clamp(-1.25, 1.25).toDouble();
-                }
-                _viewRevision.value++;
-              },
-              onTapUp: (d) => selectAt(d.localPosition, viewSize),
-              child: RepaintBoundary(child: CustomPaint(
-                size: Size.infinite,
-                painter: AnatomyPainter(parts: _visibleParts, yaw: yaw, pitch: pitch, zoom: zoom,
-                  selected: selectedPart, female: female, focusX: focusX, focusY: focusY, focusZ: focusZ,
-                  networks: vascularNetwork, layerOpacity: layerOpacity, outerSkinOpacity: outerSkinOpacity),
-              )),
-            )),
-          )),
-          Positioned(left: 16, top: 14, child: _glassTag(female ? 'FEMALE MODEL' : 'MALE MODEL', Icons.accessibility_new)),
-          Positioned(right: 16, top: 14, child: _glassTag('DRAG TO ROTATE  •  PINCH TO ZOOM', Icons.touch_app)),
-          Positioned(left: 14, top: 66, child: Wrap(spacing: 6, children: [
-            _viewButton('Front', () => setCameraView('front')),
-            _viewButton('Left', () => setCameraView('left')),
-            _viewButton('Right', () => setCameraView('right')),
-            _viewButton('Back', () => setCameraView('back')),
-          ])),
-          if (selectedPart != null) Positioned(left: 14, right: 14, bottom: 86, child: _selectedCard(selectedPart)),
-          Positioned(left: 12, right: 12, bottom: 10, child: _spaceCameraToolbar()),
-        ]),
-      );
-    });
-  }
-
-  Widget _spaceCameraToolbar() {
-    Widget tool(String label, IconData icon, VoidCallback action) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3),
-      child: SizedBox(height: 52, child: OutlinedButton.icon(
-        onPressed: action, icon: Icon(icon, size: 19), label: Text(label, style: const TextStyle(fontSize: 13)),
-        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12), foregroundColor: const Color(0xFFBCEFFF), side: const BorderSide(color: Color(0xFF31576B)), backgroundColor: const Color(0xEE0A1D2B)),
-      )),
-    );
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-      decoration: BoxDecoration(color: const Color(0xEE091A28), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF29495B))),
-      child: Row(children: [
-        tool('Reset', Icons.center_focus_strong, () => setState(() { yaw = 0; pitch = 0; zoom = 1; selected = null; isolateSelection = false; focusX = 0; focusY = .88; focusZ = 0; _refreshVisibleParts(); })),
-        tool('−', Icons.zoom_out, () => setState(() => zoom = (zoom / 1.2).clamp(.65, 3.2).toDouble())),
-        Expanded(child: Slider(value: zoom.clamp(.65, 3.2).toDouble(), min: .65, max: 3.2, onChanged: (v) => setState(() => zoom = v))),
-        tool('+', Icons.zoom_in, () => setState(() => zoom = (zoom * 1.2).clamp(.65, 3.2).toDouble())),
-      ]),
-    );
-  }
-
-  Widget _spaceInspector() {
-    final part = selected;
-    return Container(
-      color: const Color(0xFF091A28),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('MISSION VIEW', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: Color(0xFF8BEAFF))),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _genderButton('Male', !female, () => changeModel(false))),
-          const SizedBox(width: 8),
-          Expanded(child: _genderButton('Female', female, () => changeModel(true))),
-        ]),
-        const SizedBox(height: 16),
-        const Text('DISPLAY PRESETS', style: TextStyle(fontSize: 12, color: Colors.white60, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        const SizedBox(height: 8),
-        for (final item in [
-          ('Surface', 'surface', Icons.person_outline), ('Skeleton', 'skeletal', Icons.accessibility),
-          ('Muscles', 'muscular', Icons.fitness_center), ('Organs', 'organs', Icons.favorite_outline),
-          ('Circulatory', 'circulatory', Icons.water_drop_outlined), ('All systems', 'all', Icons.layers),
-        ]) Padding(padding: const EdgeInsets.only(bottom: 7), child: SizedBox(height: 48, child: OutlinedButton.icon(
-          onPressed: () => applyPreset(item.$2), icon: Icon(item.$3, size: 19), label: Text(item.$1),
-          style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, foregroundColor: const Color(0xFFBCEFFF), side: const BorderSide(color: Color(0xFF29495B)), padding: const EdgeInsets.symmetric(horizontal: 12)),
-        ))),
-        const Divider(color: Color(0xFF294354), height: 24),
-        const Text('LAYER TRANSPARENCY', style: TextStyle(fontSize: 12, color: Colors.white60, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        _spaceSlider('Hologram', layerOpacity, (v) { setState(() => layerOpacity = v); _viewRevision.value++; }),
-        _spaceSlider('Outer skin', outerSkinOpacity, (v) { setState(() => outerSkinOpacity = v); _viewRevision.value++; }),
-        const Divider(color: Color(0xFF294354), height: 24),
-        const Text('SELECTED STRUCTURE', style: TextStyle(fontSize: 12, color: Colors.white60, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        const SizedBox(height: 8),
-        if (part == null) const Expanded(child: Center(child: Text('Tap a structure\non the model to inspect it', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, height: 1.5))))
-        else Expanded(child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(part.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF8BEAFF))),
-          const SizedBox(height: 8),
-          Text((kInfo[part.id] ?? kInfo[part.sys] ?? 'Anatomical structure selected.').split('|').first, style: const TextStyle(fontSize: 14, height: 1.45)),
-          const SizedBox(height: 12),
-          SizedBox(height: 48, child: FilledButton.icon(onPressed: () => setState(() { isolateSelection = !isolateSelection; _refreshVisibleParts(); }), icon: const Icon(Icons.filter_center_focus), label: Text(isolateSelection ? 'Show all systems' : 'Isolate system'))),
-          const SizedBox(height: 8),
-          SizedBox(height: 48, child: OutlinedButton.icon(onPressed: _openAnatomyBrowser, icon: const Icon(Icons.menu_book), label: const Text('Browse structures'))),
-        ]))),
-      ]),
-    );
-  }
-
-  Widget _spaceSlider(String label, double value, ValueChanged<double> onChanged) => Padding(
-    padding: const EdgeInsets.only(top: 8),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [Expanded(child: Text(label, style: const TextStyle(fontSize: 13))), Text('${(value * 100).round()}%', style: const TextStyle(fontSize: 13, color: Color(0xFF8BEAFF)))]),
-      Slider(value: value.clamp(0.0, 1.0), min: 0, max: 1, onChanged: onChanged),
-    ]),
-  );
 
   Widget _viewButton(String label, VoidCallback action) => Padding(
     padding: const EdgeInsets.only(right: 3),
     child: TextButton(
       onPressed: action,
       style: TextButton.styleFrom(
-        minimumSize: const Size(48, 44),
+        minimumSize: const Size(0, 28),
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         foregroundColor: const Color(0xFF9DEBFF),
         backgroundColor: const Color(0xCC0B2233),
         textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
-        visualDensity: VisualDensity.standard,
+        visualDensity: VisualDensity.compact,
       ),
       child: Text(label),
     ),
@@ -954,7 +746,7 @@ class _HoloPageState extends State<HoloPage> {
     child: OutlinedButton(
       onPressed: action,
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(48, 44),
+        minimumSize: const Size(0, 30),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
         foregroundColor: const Color(0xFF9DEBFF),
         side: const BorderSide(color: Color(0xFF28536A)),
@@ -1027,9 +819,8 @@ class AnatomyPainter extends CustomPainter {
   final double yaw, pitch, zoom;
   final Part? selected;
   final bool female;
-  final List<Float32List> networks;
   final double focusX, focusY, focusZ, layerOpacity, outerSkinOpacity;
-  AnatomyPainter({required this.layerOpacity, required this.outerSkinOpacity, required this.parts, required this.yaw, required this.pitch, required this.zoom, required this.selected, required this.female, required this.networks, required this.focusX, required this.focusY, required this.focusZ});
+  AnatomyPainter({required this.layerOpacity, required this.outerSkinOpacity, required this.parts, required this.yaw, required this.pitch, required this.zoom, required this.selected, required this.female, required this.focusX, required this.focusY, required this.focusZ});
 
   (double, double, double) _rotate(double x, double y, double z) {
     final yy = y - focusY;
@@ -1119,47 +910,15 @@ class AnatomyPainter extends CustomPainter {
       canvas.drawVertices(vertices, BlendMode.srcOver, Paint()..isAntiAlias = false);
     }
 
-    // Batch the fine vessel network into one path per colour instead of issuing
-    // a Canvas drawLine call for every tiny branch segment.
-    if (parts.any((part) => part.sys == 'vessels')) {
-      for (var channel = 0; channel < networks.length; channel++) {
-        final data = networks[channel];
-        final vesselPath = Path();
-        for (var i = 0; i + 5 < data.length; i += 6) {
-          final a = _project(data[i], data[i + 1], data[i + 2], size);
-          final b = _project(data[i + 3], data[i + 4], data[i + 5], size);
-          if (a.$2 > .12 && b.$2 > .12) {
-            vesselPath.moveTo(a.$1.dx, a.$1.dy);
-            vesselPath.lineTo(b.$1.dx, b.$1.dy);
-          }
-        }
-        final vesselPaint = Paint()
-          ..color = (channel == 0 ? const Color(0xFFFF465B) : const Color(0xFF4D8DFF)).withAlpha(145)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = .65
-          ..strokeCap = StrokeCap.round
-          ..isAntiAlias = false;
-        canvas.drawPath(vesselPath, vesselPaint);
-      }
-    }
+    // Fine capillary overlay intentionally disabled: it was projected in screen space
+    // without depth testing and therefore appeared to float outside the skin.
+    // Anatomical artery/vein meshes remain rendered with the body geometry.
 
-    // A subtle cyan silhouette halo reinforces the holographic presentation.
-    final halo = Paint()..color = const Color(0x183CDFFF)..style = PaintingStyle.stroke..strokeWidth = 2.0
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-    final head = _project(0, 1.63, 0, size).$1;
-    canvas.drawCircle(head, 10 * zoom, halo);
-
-    if (selected != null) {
-      final p = _project(selected!.cx, selected!.cy, selected!.cz, size).$1;
-      final marker = Paint()..color = const Color(0xFFFFE58A)..style = PaintingStyle.stroke..strokeWidth = 1.6;
-      canvas.drawCircle(p, 11, marker);
-      canvas.drawCircle(p, 17, marker..color = const Color(0x66FFE58A)..strokeWidth = .8);
-    }
   }
 
   @override
   bool shouldRepaint(covariant AnatomyPainter oldDelegate) =>
       oldDelegate.parts != parts || oldDelegate.yaw != yaw ||
       oldDelegate.pitch != pitch || oldDelegate.zoom != zoom ||
-      oldDelegate.selected != selected || oldDelegate.female != female || oldDelegate.networks != networks || oldDelegate.focusX != focusX || oldDelegate.focusY != focusY || oldDelegate.focusZ != focusZ || oldDelegate.layerOpacity != layerOpacity || oldDelegate.outerSkinOpacity != outerSkinOpacity;
+      oldDelegate.selected != selected || oldDelegate.female != female || oldDelegate.focusX != focusX || oldDelegate.focusY != focusY || oldDelegate.focusZ != focusZ || oldDelegate.layerOpacity != layerOpacity || oldDelegate.outerSkinOpacity != outerSkinOpacity;
 }
