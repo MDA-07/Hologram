@@ -282,7 +282,11 @@ class _HoloPageState extends State<HoloPage> {
   double focusX = 0, focusY = .88, focusZ = 0;
   Part? selected;
   late List<Part> parts;
+  late List<Part> _visibleParts;
   late List<Float32List> vascularNetwork;
+  double layerOpacity = 1.0;
+  bool isolateSelection = false;
+  final ValueNotifier<int> _viewRevision = ValueNotifier<int>(0);
 
   static const systems = <String, String>{
     'skin': 'Outer layer',
@@ -294,10 +298,32 @@ class _HoloPageState extends State<HoloPage> {
   };
 
   @override
+  void dispose() {
+    _viewRevision.dispose();
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
     parts = female ? _femaleParts : _maleParts;
     vascularNetwork = female ? _femaleNetwork : _maleNetwork;
+    _refreshVisibleParts();
+  }
+
+  void _refreshVisibleParts() {
+    _visibleParts = parts.where((p) => visible(p.sys) &&
+        (!isolateSelection || selected == null || p.sys == selected!.sys)).toList(growable: false);
+  }
+
+  void _focusPart(Part part) {
+    setState(() {
+      selected = part;
+      focusX = part.cx; focusY = part.cy; focusZ = part.cz;
+      zoom = (zoom * 1.45).clamp(1.0, 3.2).toDouble();
+      isolateSelection = false;
+      _refreshVisibleParts();
+    });
   }
 
   bool visible(String sys) {
@@ -322,6 +348,7 @@ class _HoloPageState extends State<HoloPage> {
         case 'vessels': vesselsVisible = value; break;
         case 'nerves': nervesVisible = value; break;
       }
+      _refreshVisibleParts();
     });
   }
 
@@ -331,18 +358,43 @@ class _HoloPageState extends State<HoloPage> {
       parts = female ? _femaleParts : _maleParts;
       vascularNetwork = female ? _femaleNetwork : _maleNetwork;
       selected = null;
+      isolateSelection = false;
       yaw = 0;
       pitch = 0;
       zoom = 1;
       focusX = 0; focusY = .88; focusZ = 0;
+      _refreshVisibleParts();
+    });
+  }
+
+  void applyPreset(String preset) {
+    setState(() {
+      skinVisible = preset == 'surface';
+      musclesVisible = preset == 'muscular' || preset == 'all';
+      skeletonVisible = preset == 'skeletal' || preset == 'all';
+      organsVisible = preset == 'organs' || preset == 'all';
+      vesselsVisible = preset == 'circulatory' || preset == 'all';
+      nervesVisible = preset == 'nervous' || preset == 'all';
+      if (preset == 'all') skinVisible = false;
+      selected = null;
+      isolateSelection = false;
+      zoom = 1;
+      focusX = 0; focusY = .88; focusZ = 0;
+      _refreshVisibleParts();
+    });
+  }
+
+  void setCameraView(String view) {
+    setState(() {
+      yaw = view == 'left' ? -m.pi / 2 : view == 'right' ? m.pi / 2 : view == 'back' ? m.pi : 0;
+      pitch = 0;
     });
   }
 
   void selectAt(Offset point, Size size) {
     Part? nearest;
     double nearestDistance = double.infinity;
-    for (final part in parts) {
-      if (!visible(part.sys)) continue;
+    for (final part in _visibleParts) {
       final p = _project(part.cx, part.cy, part.cz, size);
       final radius = (part.ext * size.height * .48 / (3.8 / zoom)).clamp(12.0, 42.0);
       final d = (Offset(p.$1, p.$2) - point).distance;
@@ -351,17 +403,7 @@ class _HoloPageState extends State<HoloPage> {
         nearest = part;
       }
     }
-    if (nearest != null) {
-      final Part selectedPart = nearest;
-
-      setState(() {
-        selected = selectedPart;
-        focusX = selectedPart.cx;
-        focusY = selectedPart.cy;
-        focusZ = selectedPart.cz;
-        zoom = (zoom * 1.45).clamp(1.0, 2.8).toDouble();
-      });
-    }
+    if (nearest != null) _focusPart(nearest);
   }
 
   (double, double, double) _rotate(double x, double y, double z) {
@@ -386,6 +428,37 @@ class _HoloPageState extends State<HoloPage> {
         size.height * .52 - r.$2 * focal / depth);
   }
 
+  Future<void> _openAnatomyBrowser() async {
+    final query = TextEditingController();
+    await showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, backgroundColor: const Color(0xFF0A1A29),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (sheetContext) => StatefulBuilder(builder: (context, refreshSheet) {
+        final q = query.text.trim().toLowerCase();
+        final matches = parts.where((p) => q.isEmpty || p.name.toLowerCase().contains(q) || p.id.toLowerCase().contains(q) || p.sys.toLowerCase().contains(q)).toList();
+        return SafeArea(child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 14, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+          child: SizedBox(height: MediaQuery.of(context).size.height * .72, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [const Expanded(child: Text('ANATOMY LIBRARY', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.4, color: Color(0xFF8BEAFF)))), IconButton(onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close))]),
+            TextField(controller: query, onChanged: (_) => refreshSheet(() {}), decoration: InputDecoration(hintText: 'Search bone, organ, joint or system', prefixIcon: const Icon(Icons.search), filled: true, fillColor: const Color(0xFF102638), border: OutlineInputBorder(borderRadius: BorderRadius.circular(13), borderSide: BorderSide.none))),
+            const SizedBox(height: 10),
+            Text('${matches.length} structures', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+            const SizedBox(height: 6),
+            Expanded(child: ListView.separated(itemCount: matches.length, separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFF20394A)), itemBuilder: (_, i) {
+              final part = matches[i];
+              return ListTile(dense: true, leading: const Icon(Icons.hub_outlined, color: Color(0xFF63DFFF)), title: Text(part.name, style: const TextStyle(fontSize: 13)), subtitle: Text(systems[part.sys] ?? part.sys, style: const TextStyle(fontSize: 11, color: Colors.white54)), trailing: const Icon(Icons.center_focus_strong, size: 17), onTap: () {
+                Navigator.pop(sheetContext);
+                if (!visible(part.sys)) toggleSystem(part.sys, true);
+                _focusPart(part);
+              });
+            })),
+          ])),
+        ));
+      }),
+    );
+    query.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedPart = selected;
@@ -400,9 +473,10 @@ class _HoloPageState extends State<HoloPage> {
         ),
         backgroundColor: const Color(0xFF091A2A),
         actions: [
+          IconButton(tooltip: 'Search anatomy', onPressed: _openAnatomyBrowser, icon: const Icon(Icons.search)),
           IconButton(
             tooltip: 'Reset view',
-            onPressed: () => setState(() { yaw = 0; pitch = 0; zoom = 1; selected = null; focusX = 0; focusY = .88; focusZ = 0; }),
+            onPressed: () => setState(() { yaw = 0; pitch = 0; zoom = 1; selected = null; isolateSelection = false; focusX = 0; focusY = .88; focusZ = 0; _refreshVisibleParts(); }),
             icon: const Icon(Icons.center_focus_strong),
           ),
         ],
@@ -413,25 +487,30 @@ class _HoloPageState extends State<HoloPage> {
             Expanded(
               child: LayoutBuilder(builder: (context, constraints) {
                 final viewSize = Size(constraints.maxWidth, constraints.maxHeight);
-                return Stack(
+                return ValueListenableBuilder<int>(
+                  valueListenable: _viewRevision,
+                  builder: (context, revision, child) => Stack(
                   children: [
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onScaleStart: (_) => _gestureStartZoom = zoom,
-                      onScaleUpdate: (d) => setState(() {
+                      onScaleUpdate: (d) {
                         if (d.pointerCount > 1) {
                           zoom = (_gestureStartZoom * d.scale).clamp(.65, 3.2).toDouble();
                         } else {
                           yaw += d.focalPointDelta.dx * .009;
                           pitch = (pitch + d.focalPointDelta.dy * .009).clamp(-1.25, 1.25).toDouble();
                         }
-                      }),
+                        // Rebuild only the viewer subtree while dragging; keep
+                        // the app bar and anatomy controls out of the hot path.
+                        _viewRevision.value++;
+                      },
                       onTapUp: (d) => selectAt(d.localPosition, viewSize),
                       child: RepaintBoundary(
                         child: CustomPaint(
                         size: Size.infinite,
                         painter: AnatomyPainter(
-                          parts: parts.where((p) => visible(p.sys)).toList(),
+                          parts: _visibleParts,
                           yaw: yaw,
                           pitch: pitch,
                           zoom: zoom,
@@ -439,6 +518,7 @@ class _HoloPageState extends State<HoloPage> {
                           female: female,
                           focusX: focusX, focusY: focusY, focusZ: focusZ,
                           networks: vascularNetwork,
+                          layerOpacity: layerOpacity,
                         ),
                       ),
                       ),
@@ -451,12 +531,26 @@ class _HoloPageState extends State<HoloPage> {
                       right: 14, top: 12,
                       child: _glassTag('DRAG TO ROTATE  •  PINCH TO ZOOM', Icons.threed_rotation),
                     ),
+                    Positioned(
+                      left: 14,
+                      top: 56,
+                      child: Wrap(
+                        spacing: 5,
+                        children: [
+                          _viewButton('Front', () => setCameraView('front')),
+                          _viewButton('Left', () => setCameraView('left')),
+                          _viewButton('Right', () => setCameraView('right')),
+                          _viewButton('Back', () => setCameraView('back')),
+                        ],
+                      ),
+                    ),
                     if (selectedPart != null)
                       Positioned(
                         left: 14, right: 14, bottom: 12,
                         child: _selectedCard(selectedPart),
                       ),
                   ],
+                ),
                 );
               }),
             ),
@@ -470,6 +564,21 @@ class _HoloPageState extends State<HoloPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const Text('QUICK VIEWS', style: TextStyle(fontSize: 10, letterSpacing: 1.5, color: Colors.white54, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 7),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(children: [
+                      _presetButton('Surface', () => applyPreset('surface')),
+                      _presetButton('Skeleton', () => applyPreset('skeletal')),
+                      _presetButton('Muscles', () => applyPreset('muscular')),
+                      _presetButton('Organs', () => applyPreset('organs')),
+                      _presetButton('Circulatory', () => applyPreset('circulatory')),
+                      _presetButton('Nervous', () => applyPreset('nervous')),
+                      _presetButton('All systems', () => applyPreset('all')),
+                    ]),
+                  ),
+                  const SizedBox(height: 11),
                   Row(
                     children: [
                       const Text('MODEL', style: TextStyle(fontSize: 10, letterSpacing: 1.5, color: Colors.white54, fontWeight: FontWeight.bold)),
@@ -504,6 +613,13 @@ class _HoloPageState extends State<HoloPage> {
                     ),
                   ),
                   const SizedBox(height: 10),
+                  Row(children: [
+                    const Icon(Icons.opacity, size: 16, color: Colors.white54),
+                    const SizedBox(width: 7),
+                    const Text('HOLOGRAM', style: TextStyle(fontSize: 9, letterSpacing: 1, color: Colors.white54)),
+                    Expanded(child: Slider(value: layerOpacity, min: .25, max: 1, onChanged: (v) { setState(() => layerOpacity = v); _viewRevision.value++; })),
+                    Text('${(layerOpacity * 100).round()}%', style: const TextStyle(fontSize: 10, color: Colors.white60)),
+                  ]),
                   Row(
                     children: [
                       const Icon(Icons.zoom_out, size: 17, color: Colors.white54),
@@ -520,7 +636,7 @@ class _HoloPageState extends State<HoloPage> {
                       IconButton(
                         tooltip: 'Clear selection',
                         visualDensity: VisualDensity.compact,
-                        onPressed: () => setState(() { selected = null; zoom = 1; focusX = 0; focusY = .88; focusZ = 0; }),
+                        onPressed: () => setState(() { selected = null; isolateSelection = false; zoom = 1; focusX = 0; focusY = .88; focusZ = 0; _refreshVisibleParts(); }),
                         icon: const Icon(Icons.close, size: 18),
                       ),
                     ],
@@ -533,6 +649,38 @@ class _HoloPageState extends State<HoloPage> {
       ),
     );
   }
+
+  Widget _viewButton(String label, VoidCallback action) => Padding(
+    padding: const EdgeInsets.only(right: 3),
+    child: TextButton(
+      onPressed: action,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 28),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        foregroundColor: const Color(0xFF9DEBFF),
+        backgroundColor: const Color(0xCC0B2233),
+        textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+        visualDensity: VisualDensity.compact,
+      ),
+      child: Text(label),
+    ),
+  );
+
+  Widget _presetButton(String label, VoidCallback action) => Padding(
+    padding: const EdgeInsets.only(right: 6),
+    child: OutlinedButton(
+      onPressed: action,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 30),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        foregroundColor: const Color(0xFF9DEBFF),
+        side: const BorderSide(color: Color(0xFF28536A)),
+        visualDensity: VisualDensity.compact,
+        textStyle: const TextStyle(fontSize: 10),
+      ),
+      child: Text(label),
+    ),
+  );
 
   Widget _glassTag(String text, IconData icon) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -574,23 +722,21 @@ class _HoloPageState extends State<HoloPage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
           Expanded(child: Text(part.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF8BEAFF)))),
-          IconButton(onPressed: () => setState(() { selected = null; zoom = 1; focusX = 0; focusY = .88; focusZ = 0; }), icon: const Icon(Icons.close, size: 17), visualDensity: VisualDensity.compact),
+          IconButton(onPressed: () => setState(() { selected = null; isolateSelection = false; zoom = 1; focusX = 0; focusY = .88; focusZ = 0; _refreshVisibleParts(); }), icon: const Icon(Icons.close, size: 17), visualDensity: VisualDensity.compact),
         ]),
         if (pieces.isNotEmpty) Text(pieces[0], style: const TextStyle(fontSize: 12, color: Colors.white)),
         if (pieces.length > 1) Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(pieces[1], style: const TextStyle(fontSize: 11, color: Colors.white60)),
         ),
+        const SizedBox(height: 7),
+        Wrap(spacing: 7, children: [
+          TextButton.icon(onPressed: () => setState(() { isolateSelection = !isolateSelection; _refreshVisibleParts(); }), icon: Icon(isolateSelection ? Icons.layers : Icons.filter_center_focus, size: 15), label: Text(isolateSelection ? 'Show all systems' : 'Isolate system')),
+          TextButton.icon(onPressed: () => _openAnatomyBrowser(), icon: const Icon(Icons.menu_book, size: 15), label: const Text('Browse anatomy')),
+        ]),
       ]),
     );
   }
-}
-
-class _Face {
-  final Offset a, b, c;
-  final double depth;
-  final Color color;
-  const _Face(this.a, this.b, this.c, this.depth, this.color);
 }
 
 class AnatomyPainter extends CustomPainter {
@@ -599,8 +745,8 @@ class AnatomyPainter extends CustomPainter {
   final Part? selected;
   final bool female;
   final List<Float32List> networks;
-  final double focusX, focusY, focusZ;
-  AnatomyPainter({required this.parts, required this.yaw, required this.pitch, required this.zoom, required this.selected, required this.female, required this.networks, required this.focusX, required this.focusY, required this.focusZ});
+  final double focusX, focusY, focusZ, layerOpacity;
+  AnatomyPainter({required this.layerOpacity, required this.parts, required this.yaw, required this.pitch, required this.zoom, required this.selected, required this.female, required this.networks, required this.focusX, required this.focusY, required this.focusZ});
 
   (double, double, double) _rotate(double x, double y, double z) {
     final yy = y - focusY;
@@ -635,58 +781,81 @@ class AnatomyPainter extends CustomPainter {
     for (double x = 0; x < size.width; x += 28) canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
     for (double y = 0; y < size.height; y += 28) canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
 
-    final faces = <_Face>[];
+    final cy = m.cos(yaw), sy = m.sin(yaw);
+    final cp = m.cos(pitch), sp = m.sin(pitch);
+    final cameraDistance = 3.8 / zoom;
+    final focal = size.height * 1.05;
+
+    // Render each anatomical part as one indexed vertex batch. The previous
+    // implementation allocated one Dart object per triangle and globally
+    // depth-sorted every triangle on every frame. That is expensive during drag.
+    // Geometry is immutable, so only the projected vertex buffer is rebuilt.
     for (final part in parts) {
-      final alpha = part.sys == 'skin' ? 42 : part.sys == 'vessels' ? 220 : 205;
-      final base = Color(part.col).withAlpha(alpha);
-      // A mesh vertex is shared by many triangles. Project it only once per frame.
       final vertexCount = part.p.length ~/ 3;
-      final projected = List<(Offset, double)>.generate(vertexCount, (v) {
+      if (vertexCount == 0 || part.ixL.isEmpty) continue;
+
+      final positions = Float32List(vertexCount * 2);
+      var visibleVertices = 0;
+      for (var v = 0; v < vertexCount; v++) {
         final j = v * 3;
-        return _project(part.p[j], part.p[j + 1], part.p[j + 2], size);
-      }, growable: false);
-      final selectedPart = identical(part, selected);
-      final color = selectedPart ? const Color(0xFFFFE58A).withAlpha(240) : base;
-      for (int i = 0; i + 2 < part.ixL.length; i += 3) {
-        final a = projected[part.ixL[i]];
-        final b = projected[part.ixL[i + 1]];
-        final c = projected[part.ixL[i + 2]];
-        if (a.$2 <= .12 || b.$2 <= .12 || c.$2 <= .12) continue;
-        faces.add(_Face(a.$1, b.$1, c.$1, (a.$2 + b.$2 + c.$2) / 3, color));
+        final x = part.p[j] - focusX;
+        final y = part.p[j + 1] - focusY;
+        final z = part.p[j + 2] - focusZ;
+        final rx = x * cy + z * sy;
+        final rz = -x * sy + z * cy;
+        final ry = y * cp - rz * sp;
+        final rotatedZ = y * sp + rz * cp;
+        final depth = cameraDistance - rotatedZ;
+        // Inline projection avoids allocating a tuple and Offset for every
+        // vertex on every frame, which is important on mid-range phones.
+        if (depth <= .12) {
+          positions[v * 2] = -100000;
+          positions[v * 2 + 1] = -100000;
+        } else {
+          positions[v * 2] = size.width * .5 + rx * focal / depth;
+          positions[v * 2 + 1] = size.height * .52 - ry * focal / depth;
+          visibleVertices++;
+        }
       }
-    }
-    // Keep transparent hologram depth order, but submit all triangles in one GPU batch.
-    faces.sort((a, b) => b.depth.compareTo(a.depth));
-    if (faces.isNotEmpty) {
-      final positions = Float32List(faces.length * 6);
-      final colors = Int32List(faces.length * 3);
-      var pi = 0;
-      var ci = 0;
-      for (final face in faces) {
-        positions[pi++] = face.a.dx; positions[pi++] = face.a.dy;
-        colors[ci++] = face.color.value;
-        positions[pi++] = face.b.dx; positions[pi++] = face.b.dy;
-        colors[ci++] = face.color.value;
-        positions[pi++] = face.c.dx; positions[pi++] = face.c.dy;
-        colors[ci++] = face.color.value;
-      }
-      final vertices = ui.Vertices.raw(ui.VertexMode.triangles, positions, colors: colors);
+      if (visibleVertices == 0) continue;
+
+      final baseAlpha = part.sys == 'skin' ? 42 : part.sys == 'vessels' ? 220 : 205;
+      final alpha = (baseAlpha * layerOpacity).round().clamp(0, 255).toInt();
+      final color = identical(part, selected)
+          ? const Color(0xFFFFE58A).withAlpha(240)
+          : Color(part.col).withAlpha(alpha);
+      final colors = Int32List(vertexCount);
+      colors.fillRange(0, vertexCount, color.value);
+      final vertices = ui.Vertices.raw(
+        ui.VertexMode.triangles,
+        positions,
+        colors: colors,
+        indices: part.ixL,
+      );
       canvas.drawVertices(vertices, BlendMode.srcOver, Paint()..isAntiAlias = false);
     }
 
-    // Fine branching vessel network, based on the supplied vascular reference.
+    // Batch the fine vessel network into one path per colour instead of issuing
+    // a Canvas drawLine call for every tiny branch segment.
     if (parts.any((part) => part.sys == 'vessels')) {
       for (var channel = 0; channel < networks.length; channel++) {
         final data = networks[channel];
-        final vesselPaint = Paint()
-          ..color = (channel == 0 ? const Color(0xFFFF465B) : const Color(0xFF4D8DFF)).withAlpha(145)
-          ..strokeWidth = .65
-          ..strokeCap = StrokeCap.round;
+        final vesselPath = Path();
         for (var i = 0; i + 5 < data.length; i += 6) {
           final a = _project(data[i], data[i + 1], data[i + 2], size);
           final b = _project(data[i + 3], data[i + 4], data[i + 5], size);
-          if (a.$2 > .12 && b.$2 > .12) canvas.drawLine(a.$1, b.$1, vesselPaint);
+          if (a.$2 > .12 && b.$2 > .12) {
+            vesselPath.moveTo(a.$1.dx, a.$1.dy);
+            vesselPath.lineTo(b.$1.dx, b.$1.dy);
+          }
         }
+        final vesselPaint = Paint()
+          ..color = (channel == 0 ? const Color(0xFFFF465B) : const Color(0xFF4D8DFF)).withAlpha(145)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = .65
+          ..strokeCap = StrokeCap.round
+          ..isAntiAlias = false;
+        canvas.drawPath(vesselPath, vesselPaint);
       }
     }
 
@@ -708,5 +877,5 @@ class AnatomyPainter extends CustomPainter {
   bool shouldRepaint(covariant AnatomyPainter oldDelegate) =>
       oldDelegate.parts != parts || oldDelegate.yaw != yaw ||
       oldDelegate.pitch != pitch || oldDelegate.zoom != zoom ||
-      oldDelegate.selected != selected || oldDelegate.female != female || oldDelegate.networks != networks || oldDelegate.focusX != focusX || oldDelegate.focusY != focusY || oldDelegate.focusZ != focusZ;
+      oldDelegate.selected != selected || oldDelegate.female != female || oldDelegate.networks != networks || oldDelegate.focusX != focusX || oldDelegate.focusY != focusY || oldDelegate.focusZ != focusZ || oldDelegate.layerOpacity != layerOpacity;
 }

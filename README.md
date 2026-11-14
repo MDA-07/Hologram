@@ -43,3 +43,34 @@ flutter run --release
 ```
 
 Debug mode is substantially slower for this CPU-based custom renderer. If the viewer still struggles on lower-end devices, turn off the fine blood-vessel network and show only the main vessels, or reduce mesh detail further.
+
+## Performance and interaction pass (2026-11-14)
+
+- Removed the per-triangle `_Face` object list and global triangle sort from the hot paint loop.
+- Draws each anatomical part through one indexed `ui.Vertices` batch instead of assembling a single huge sorted triangle list.
+- Projects mesh vertices with inline scalar math to avoid allocating a tuple and `Offset` for every vertex.
+- Batches the fine red/blue vessel branches into one `Path` per colour rather than issuing one `drawLine` call per branch segment.
+- Dragging and pinching now refresh only the viewer subtree through a `ValueNotifier`; the app bar and lower control panel are not rebuilt on every pointer update.
+- Added quick anatomy presets (surface, skeleton, muscles, organs, circulatory, nervous, all systems) and front/left/right/back camera shortcuts.
+
+### Renderer architecture note
+
+This remains a Flutter `CustomPainter` renderer using indexed `ui.Vertices` batches. Flutter's canvas is GPU-backed on supported platforms, but the model's perspective projection is still performed on the CPU. This is a substantial incremental optimization over sorting and allocating every triangle each frame, but it is not a full 3D engine migration. A true real-time 3D engine upgrade should use medically reviewed, licensed glTF/GLB anatomy assets with separate named meshes and a renderer such as a maintained OpenGL/WebGL or native 3D integration. The supplied project currently contains procedural low-detail meshes rather than production-ready GLB anatomy assets, so swapping engines alone would not create realistic anatomy.
+
+### Validation
+
+The Dart/Flutter SDK was not installed in the build environment, so this package has not been compiled or run here. After extracting, run:
+
+```bash
+flutter clean
+flutter pub get
+flutter analyze
+flutter run --release
+```
+
+If `flutter analyze` reports an error, share the complete message and line number. Compare performance using a release build on the same device before and after this update; debug mode is not a meaningful performance benchmark.
+
+
+## Ultimate prototype upgrade
+
+See `ULTIMATE_UPGRADE.md` for the added searchable Anatomy Library, structure focus, system isolation, hologram intensity control, visible-part caching, and validation instructions. The app remains a procedural educational prototype; medically reviewed GLB/GLTF assets are required for high-fidelity anatomy.
