@@ -1,0 +1,11 @@
+name: holo_anatomy
+description: Holographic astronaut anatomy and health inspection viewer (pure Dart, no 3D plugin).
+publish_to: none
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  vector_math: ^2.1.4
+flutter:
+  uses-material-design: true
