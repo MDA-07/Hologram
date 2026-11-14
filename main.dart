@@ -318,6 +318,11 @@ class _HoloPageState extends State<HoloPage> {
   bool isolateSelection = false;
   final ValueNotifier<int> _viewRevision = ValueNotifier<int>(0);
   final FocusNode _cameraFocusNode = FocusNode(debugLabel: 'Anatomy camera');
+  // Left mouse drag rotates; right mouse drag pans without rotating.
+  Offset? _lastMousePosition;
+  int _activeMouseButtons = 0;
+  bool _mouseDragging = false;
+
 
   // Camera-space movement changes the model focus only; it never changes zoom.
   static const double _panStep = 0.055;
@@ -351,6 +356,40 @@ class _HoloPageState extends State<HoloPage> {
     });
     _viewRevision.value++;
     return KeyEventResult.handled;
+  }
+
+  void _handleMousePointerDown(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.mouse) return;
+    _activeMouseButtons = event.buttons;
+    _lastMousePosition = event.position;
+    _mouseDragging = (event.buttons & (kPrimaryMouseButton | kSecondaryMouseButton)) != 0;
+    _cameraFocusNode.requestFocus();
+  }
+
+  void _handleMousePointerMove(PointerMoveEvent event) {
+    if (event.kind != PointerDeviceKind.mouse || !_mouseDragging || _lastMousePosition == null) return;
+    final delta = event.position - _lastMousePosition!;
+    _lastMousePosition = event.position;
+
+    if ((_activeMouseButtons & kPrimaryMouseButton) != 0 ||
+        (event.buttons & kPrimaryMouseButton) != 0) {
+      yaw += delta.dx * .009;
+      pitch = (pitch + delta.dy * .009).clamp(-1.25, 1.25).toDouble();
+    } else if ((_activeMouseButtons & kSecondaryMouseButton) != 0 ||
+        (event.buttons & kSecondaryMouseButton) != 0) {
+      // Pan the model focus in screen space; yaw and pitch remain unchanged.
+      final panScale = (3.8 / zoom) / 420.0;
+      focusX -= delta.dx * panScale;
+      focusY += delta.dy * panScale;
+    }
+    _viewRevision.value++;
+  }
+
+  void _handleMousePointerUp(PointerEvent event) {
+    if (event.kind != PointerDeviceKind.mouse) return;
+    _activeMouseButtons = 0;
+    _lastMousePosition = null;
+    _mouseDragging = false;
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
@@ -573,11 +612,16 @@ class _HoloPageState extends State<HoloPage> {
                       onKeyEvent: _handleCameraKey,
                       child: Listener(
                         onPointerSignal: _handlePointerSignal,
+                        onPointerDown: _handleMousePointerDown,
+                        onPointerMove: _handleMousePointerMove,
+                        onPointerUp: _handleMousePointerUp,
+                        onPointerCancel: _handleMousePointerUp,
                         child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTapDown: (_) => _cameraFocusNode.requestFocus(),
                       onScaleStart: (_) => _gestureStartZoom = zoom,
                       onScaleUpdate: (d) {
+                        if (_mouseDragging) return;
                         if (d.pointerCount > 1) {
                           zoom = (_gestureStartZoom * d.scale).clamp(.65, 3.2).toDouble();
                         } else {
@@ -615,7 +659,7 @@ class _HoloPageState extends State<HoloPage> {
                     ),
                     Positioned(
                       right: 14, top: 12,
-                      child: _glassTag('DRAG ROTATE • WHEEL ZOOM • WASD MOVE', Icons.threed_rotation),
+                      child: _glassTag('LEFT DRAG ROTATE • RIGHT DRAG PAN • WHEEL ZOOM', Icons.threed_rotation),
                     ),
                     Positioned(
                       left: 14,
@@ -934,29 +978,9 @@ class AnatomyPainter extends CustomPainter {
       canvas.drawVertices(vertices, BlendMode.srcOver, Paint()..isAntiAlias = false);
     }
 
-    // Batch the fine vessel network into one path per colour instead of issuing
-    // a Canvas drawLine call for every tiny branch segment.
-    if (parts.any((part) => part.sys == 'vessels')) {
-      for (var channel = 0; channel < networks.length; channel++) {
-        final data = networks[channel];
-        final vesselPath = Path();
-        for (var i = 0; i + 5 < data.length; i += 6) {
-          final a = _project(data[i], data[i + 1], data[i + 2], size);
-          final b = _project(data[i + 3], data[i + 4], data[i + 5], size);
-          if (a.$2 > .12 && b.$2 > .12) {
-            vesselPath.moveTo(a.$1.dx, a.$1.dy);
-            vesselPath.lineTo(b.$1.dx, b.$1.dy);
-          }
-        }
-        final vesselPaint = Paint()
-          ..color = (channel == 0 ? const Color(0xFFFF465B) : const Color(0xFF4D8DFF)).withAlpha(145)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = .65
-          ..strokeCap = StrokeCap.round
-          ..isAntiAlias = false;
-        canvas.drawPath(vesselPath, vesselPaint);
-      }
-    }
+    // The fine vessel overlay is not drawn over the completed body anymore:
+    // that overlay ignored surface depth and made vessels float above the skin.
+    // The vessel meshes remain rendered as ordinary anatomical parts.
 
     // A subtle cyan silhouette halo reinforces the holographic presentation.
     final halo = Paint()..color = const Color(0x183CDFFF)..style = PaintingStyle.stroke..strokeWidth = 2.0
